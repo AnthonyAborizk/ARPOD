@@ -1,0 +1,97 @@
+import torch
+
+from .base_agent import BaseAgent
+from models.ff_model import FFModel
+from policies.MPC_policy import MPCPolicy
+from infrastructure.replay_buffer import ReplayBuffer
+from infrastructure.utils import *
+
+
+class MBAgent(BaseAgent):
+    def __init__(self, env, agent_params):
+        super(MBAgent, self).__init__()
+
+        self.env = env.unwrapped
+        self.agent_params = agent_params
+        self.ensemble_size = self.agent_params['ensemble_size']
+        self.device = self.agent_params['device']
+
+        self.dyn_models = []
+        for i in range(self.ensemble_size):
+            model = FFModel(
+                self.agent_params['ac_dim'],
+                self.agent_params['ob_dim'],
+                self.agent_params['n_layers'],
+                self.agent_params['size'],
+                self.agent_params['learning_rate'],
+                scope='dyn_model_{}'.format(i),
+                device=self.device)
+            self.dyn_models.append(model)
+
+        self.actor = MPCPolicy(
+            self.env,
+            ac_dim=self.agent_params['ac_dim'],
+            dyn_models=self.dyn_models,
+            horizon=self.agent_params['mpc_horizon'],
+            N=self.agent_params['mpc_num_action_sequences'],
+        )
+
+        self.replay_buffer = ReplayBuffer()
+
+    def train(self, ob_no, ac_na, re_n, next_ob_no, terminal_n):
+
+        # training a MB agent refers to updating the predictive model using observed state transitions
+        # NOTE: each model in the ensemble is trained on a different random batch of size batch_size
+        losses = []
+        num_data = ob_no.shape[0]
+        num_data_per_ens = int(num_data/self.ensemble_size)
+
+        for i in range(self.ensemble_size):
+
+            # select which datapoints to use for this model of the ensemble
+            # you might find the num_data_per_env variable defined above useful
+            ens_top_idx = (i+1) * num_data_per_ens
+            ens_bottom_idx = i * num_data_per_ens
+            observations = ob_no[ens_bottom_idx: ens_top_idx]
+            actions = ac_na[ens_bottom_idx: ens_top_idx]
+            next_observations = next_ob_no[ens_bottom_idx: ens_top_idx]
+
+            # use datapoints to update one of the dyn_models
+            model = self.dyn_models[i]
+            loss = model.update(observations, actions,
+                                next_observations, self.data_statistics)
+            losses.append(loss)
+
+        avg_loss = np.mean(losses)
+        std_loss = np.std(losses)
+        # print(std_loss)
+        return avg_loss
+
+    def add_to_replay_buffer(self, paths, add_sl_noise=False):
+
+        # add data to replay buffer
+        self.replay_buffer.add_rollouts(paths, noised=add_sl_noise)
+
+        # get updated mean/std of the data in our replay buffer
+        self.data_statistics = {'obs_mean': np.mean(self.replay_buffer.obs, axis=0),
+                                'obs_std': np.std(self.replay_buffer.obs, axis=0),
+                                'acs_mean': np.mean(self.replay_buffer.acs, axis=0),
+                                'acs_std': np.std(self.replay_buffer.acs, axis=0),
+                                'delta_mean': np.mean(
+                                    self.replay_buffer.next_obs - self.replay_buffer.obs,
+                                    axis=0),
+                                'delta_std': np.std(
+                                    self.replay_buffer.next_obs - self.replay_buffer.obs,
+                                    axis=0),
+                                }
+
+        self.data_statistics = dict((k, torch.from_numpy(v).float().to(
+            self.device)) for k, v in self.data_statistics.items())
+
+        # update the actor's data_statistics too, so actor.get_action can be calculated correctly
+        self.actor.data_statistics = self.data_statistics
+
+    def sample(self, batch_size):
+        # NOTE: The size of the batch returned here is sampling batch_size * ensemble_size,
+        # so each model in our ensemble can get trained on batch_size data
+        return self.replay_buffer.sample_random_data(batch_size*self.ensemble_size)
