@@ -1,4 +1,4 @@
-from envs.docking.docking_debris import SpacecraftDockingContinuous
+from envs.docking.docking import SpacecraftDockingContinuous
 from gym.envs.registration import register
 
 register(
