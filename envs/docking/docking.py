@@ -4,12 +4,14 @@
 Created by Kyle Dunlap and Kai Delsing
 Mentor: Kerianne Hobbs
 
-Modifid by Anthoy Alln 
+Modified by Anthoy Aborizk
 Mentor: Scott Nivison
 
 Description:
-	A deputy spacecraft is trying to dock with the chief spacecraft in Hill's frame. 
+	A deputy (chaser) spacecraft is trying to dock with the chief (target) spacecraft in Hill's frame. 
 	This is the first sub-policy in a hierarchical deep reinforcement learning model. 
+ 
+ dynamics
 
 Observation (Deputy):
 	Type: Box(4)
@@ -42,7 +44,7 @@ Reward:
 	-1 for running out of time
 
 Starting State:
-	Deputy start 1000 m away from chief at random angle
+	Deputy start 10000 m away from chief at random angle
 	x and y velocity are both between -1.44 and +1.44 m/s
 
 Episode Termination:
@@ -62,6 +64,7 @@ from gym import spaces
 from gym.utils import seeding
 import math
 import numpy as np
+from pyparsing import java_style_comment
 from scipy import integrate
 from envs.docking.rendering import DockingRender as render
 
@@ -69,24 +72,35 @@ from envs.docking.rendering import DockingRender as render
 class SpacecraftDocking(gym.Env):
 
     def __init__(self):
-
+        
+        #define position of target as origin
         self.x_chief = 0  # m
         self.y_chief = 0  # m
-        self.position_deputy = 1000  # m (Relative distance from chief)
-        self.mass_deputy = 12       # kg
+        
+        #starting distance of chaser
+        self.position_deputy = 10000  # m (Relative distance from chief)
+        
+        self.mass_deputy = 12       # kg mass of chaser
         self.n = 0.001027           # rad/sec (mean motion)
-        self.tau = 1                # sec (time step)
+        
+        self.tau = 1                # sec (time step) - time constant; how fast chaser is moving
+        
         # Either 'Quad', 'RK45', or 'Euler' (default)
-        self.integrator = 'Euler'
+        self.integrator = 'Euler' #define integrator
         self.force_magnitude = 1    # Newtons
+        
         # m (In either direction)
         self.x_threshold = 1.5 * self.position_deputy
+        
         # m (In either direction)
         self.y_threshold = 1.5 * self.position_deputy
+        
         # m (|x| and |y| must be less than this to dock)
-        self.pos_threshold = .1
+        self.pos_threshold = 100
+        
         # m/s (Relative velocity must be less than this to dock)
         self.vel_threshold = .2
+        
         self.max_time = 4000        # seconds
         self.max_control = 2500     # Newtons
         self.init_velocity = (self.position_deputy + 625) / \
@@ -101,30 +115,30 @@ class SpacecraftDocking(gym.Env):
         self.overtime = 0  # Used to count over max time/control for an epoch
         self.crash = 0  # Used to count crash rate for an epoch
 
-        #Thrust & Particle Variables#
+        #Thrust & Particle Variables
         # what type of thrust visualization to use. 'Particle', 'Block', 'None'
         self.thrustVis = 'Particle'
         self.particles = []         # list containing particle references
         self.p_obj = []             # list containing particle objects
         self.trans = []             # list containing particle
-        self.p_velocity = 20        # velocity of particle
+        self.p_velocity = 20        # velocity of force particle
         self.p_ttl = 4              # (steps) time to live per particle
         # (deg) the variation of launch angle (multiply by 2 to get full angle)
         self.p_var = 3
 
-        #Ellipse Variables#
-        self.ellipse_a1 = 200      # m
-        self.ellipse_b1 = 100      # m
-        self.ellipse_a2 = 40       # m
-        self.ellipse_b2 = 20       # m
+        #Ellipse Variables
+        #define dimensions of circle (boundries of each phase)
+        self.ellipse_a1 = 1000      # m
+        self.ellipse_a2 = 100       # m
+        self.ellipse_a3=10000       #m
         self.ellipse_quality = 150  # 1/x * pi
-
-        #Trace Variables#
-        self.trace = 5       # (steps)spacing between trace dots
+        
+        #Trace Variables
+        self.trace = 8       # (steps) spacing between trace dots
         self.traceMin = True  # sets trace size to 1 (minimum) if true
         self.tracectr = self.trace
 
-        #Customization Options#
+        #Customization Options
         # gym thing - must be set to show up
         self.viewer = None
         # if set to true, it will print resolution
@@ -135,10 +149,12 @@ class SpacecraftDocking(gym.Env):
         self.velocityArrow = True
         self.forceArrow = True                              # if force arrow is shown
         self.bg_color = (0, 0, .15)                         # r,g,b
-        self.stars = 400                                    # sets number of stars
+        #color of background (sky)
+        
+        self.stars = 400                                    # sets number of stars; adding more makes program run slower
         # Set to true to print termination condition
         self.termination_condition = False
-
+        
         high = np.array([np.finfo(np.float32).max,  # x position (Max possible value +inf)
                          np.finfo(np.float32).max,              # y position
                          np.finfo(np.float32).max,              # x velocity
@@ -158,7 +174,7 @@ class SpacecraftDocking(gym.Env):
 
         self.seed()  # Generate random seed
 
-        self.reset()  # Reset environment when initialized
+      #  self.reset()  # Reset environment when initialized
 
     def action_select(self):  # Defines action type
         self.action_type = 'Discrete'
@@ -167,26 +183,53 @@ class SpacecraftDocking(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def reset(self):  # called before each episode
+    def reset(self):  # called before each episode; reset simulation
         self.steps = -1  # Step counter
         self.control_input = 0  # Used to sum total control input for an episode
 
         # Use random angle to calculate x and y position
         # random angle, starts 10km away
-        theta = self.np_random.uniform(low=0, high=2*math.pi)
-        self.x_deputy = self.position_deputy*math.cos(theta)  # m
-        self.y_deputy = self.position_deputy*math.sin(theta)  # m
+        theta = self.np_random.uniform(low=0, high=2*math.pi) #rad
+        #gives original angle relative to target; controls start angle
+        
+        self.x_deputy = self.position_deputy*math.cos(theta)  # m (x distance to chaser)
+        self.y_deputy = self.position_deputy*math.sin(theta)  # m (y distance to chaser)
+            
+        #compare to origin (target)
+        print('x is',self.x_deputy,'m')
+        print('y is',self.y_deputy,'m')  
+        print('angle relative to target is',theta*(180/math.pi),'degrees') 
+        if self.x_deputy<self.x_chief:
+            print('the chaser needs to move right')     
+        elif self.x_deputy>self.x_chief:
+            print('the chaser needs to move left')
+            
+        if self.y_deputy<self.y_chief:
+            print('the chaser needs to move up')     
+        elif self.y_deputy>self.y_chief:
+            print('the chaser needs to move down')
+                       
         # Random x and y velocity
+        #random original velocity
+        #controls direction chaser originally goes
         x_dot = self.np_random.uniform(
             low=-self.init_velocity, high=self.init_velocity)  # m/s
         y_dot = self.np_random.uniform(
             low=-self.init_velocity, high=self.init_velocity)  # m/s
-
+        print('xdot is',x_dot,'m/s')
+        print('ydot is',y_dot,'m/s')
+        
         self.rH = self.position_deputy  # m (Relative distance from chief)
 
         # Define observation state
+        #state vector array
         self.state = np.array([self.x_deputy, self.y_deputy, x_dot, y_dot])
+        
+        print(self.state[0:2])
+        #same values as before when printing x and y (line 194)
+        
         return self.state
+    
 
     def mpc_reward(self, observations, actions, steps):
         if (len(observations.shape) == 1):
@@ -210,15 +253,22 @@ class SpacecraftDocking(gym.Env):
                 (x_force / self.mass_deputy)
             y_acc = (-2 * self.n * x_dot_obs[i]) + \
                 (y_force / self.mass_deputy)
+                
             # Integrate acceleration to calculate velocity
             x_dot = x_dot_obs[i] + x_acc * self.tau
             y_dot = y_dot_obs[i] + y_acc * self.tau
+            
             # Integrate velocity to calculate position
             x = xx[i] + x_dot * self.tau
             y = yy[i] + y_dot * self.tau
+            
             # Relative distance between deputy and chief (assume chief is always at origin)
             rH = np.sqrt(x**2 + y**2)
+            #new distance
+            
             vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
+            #new velocity
+            
             vH_max = 2 * self.n * rH + self.vel_threshold  # Max Velocity
             vH_min = 1/2 * self.n * rH - self.vel_threshold  # Min Velocity
 
@@ -345,43 +395,46 @@ class SpacecraftDocking(gym.Env):
             assert self.action_space.contains(action), "Invalid action"
         else:
             # Clip action to be within boundaries - only for continuous
+            #makes actions that are outside force_magnitude equal to force_magnitude
             action = np.clip(action, -self.force_magnitude,
                              self.force_magnitude)
 
         # Extract current state data
+        #print(self.state)
+        #prints first state (same as previous) then every state after because it is in the for loop
         x, y, x_dot, y_dot = self.state
 
-        if self.action_type == 'Discrete':  # Discrete action space
-            if action == 0:
-                self.x_force = -self.force_magnitude
-                self.y_force = -self.force_magnitude
-            elif action == 1:
-                self.x_force = -self.force_magnitude
-                self.y_force = 0
-            elif action == 2:
-                self.x_force = -self.force_magnitude
-                self.y_force = self.force_magnitude
-            elif action == 3:
-                self.x_force = 0
-                self.y_force = -self.force_magnitude
-            elif action == 4:
-                self.x_force = 0
-                self.y_force = 0
-            elif action == 5:
-                self.x_force = 0
-                self.y_force = self.force_magnitude
-            elif action == 6:
-                self.x_force = self.force_magnitude
-                self.y_force = -self.force_magnitude
-            elif action == 7:
-                self.x_force = self.force_magnitude
-                self.y_force = 0
-            elif action == 8:
-                self.x_force = self.force_magnitude
-                self.y_force = self.force_magnitude
+        # if self.action_type == 'Discrete':  # Discrete action space
+        #     if action == 0:
+        #         self.x_force = -self.force_magnitude
+        #         self.y_force = -self.force_magnitude
+        #     elif action == 1:
+        #         self.x_force = -self.force_magnitude
+        #         self.y_force = 0
+        #     elif action == 2:
+        #         self.x_force = -self.force_magnitude
+        #         self.y_force = self.force_magnitude
+        #     elif action == 3:
+        #         self.x_force = 0
+        #         self.y_force = -self.force_magnitude
+        #     elif action == 4:
+        #         self.x_force = 0
+        #         self.y_force = 0
+        #     elif action == 5:
+        #         self.x_force = 0
+        #         self.y_force = self.force_magnitude
+        #     elif action == 6:
+        #         self.x_force = self.force_magnitude
+        #         self.y_force = -self.force_magnitude
+        #     elif action == 7:
+        #         self.x_force = self.force_magnitude
+        #         self.y_force = 0
+        #     elif action == 8:
+        #         self.x_force = self.force_magnitude
+        #         self.y_force = self.force_magnitude
 
-        else:  # Continuous action space
-            self.x_force, self.y_force = action
+        # else:  # Continuous action space
+        self.x_force, self.y_force = action
 
         # Add total force for given time period
         self.control_input += (abs(self.x_force) +
@@ -412,6 +465,7 @@ class SpacecraftDocking(gym.Env):
 
         elif self.integrator == 'Euler':  # Simple Euler Integrator
             # Define acceleration functions
+            #CW Equations
             x_acc = (3 * self.n ** 2 * x) + (2 * self.n * y_dot) + \
                 (self.x_force / self.mass_deputy)
             y_acc = (-2 * self.n * x_dot) + (self.y_force / self.mass_deputy)
@@ -421,6 +475,8 @@ class SpacecraftDocking(gym.Env):
             # Integrate velocity to calculate position
             x = x + x_dot * self.tau
             y = y + y_dot * self.tau
+            #gives new position
+      
 
         else:  # Default 'Quad' Integrator
             # Integrate acceleration to calculate velocity
@@ -433,7 +489,7 @@ class SpacecraftDocking(gym.Env):
             y = y + integrate.quad(lambda y: y_dot, 0, self.tau)[0]
 
         # Define new observation state
-        observation = np.array([x, y, x_dot, y_dot])
+        observation = np.array([x, y, x_dot, y_dot]) 
 
         # Relative distance between deputy and chief (assume chief is always at origin)
         self.rH = np.sqrt(x**2 + y**2)
@@ -448,10 +504,29 @@ class SpacecraftDocking(gym.Env):
         reward['failure'] = self.failure
         reward['overtime'] = self.overtime
         reward['success'] = self.success
+        
+        
 
-        return self.state, reward,  done, {}
-
-    # Used to check if velocity is over max velocity constraint
+        #conditions for phases    
+        if self.rH>10000:
+            #phase 1, 2 DOF
+            self.state=self.state
+            self.alpha=math.atan(self.state[2]/self.state[1])
+            self.y_meas=self.alpha
+        elif self.rH<10000 and self.rH>1000:
+            #phase 2, 2 DOF
+            self.state=self.state
+            self.alpha=math.atan(self.state[2]/self.state[1])
+            self.y_meas=[self.alpha,self.rH]
+        # elif self.rH<1000:
+        #     #phase 3, 2 DOF
+            
+        
+        
+        return self.state, reward,  done, {}        
+   
+        # Used to check if velocity is over max velocity constraint
+    
     def check_velocity(self, x_force, y_force):
         # Extract current state data
         x, y, x_dot, y_dot = self.state
@@ -463,10 +538,10 @@ class SpacecraftDocking(gym.Env):
         x_dot = x_dot + x_acc * self.tau
         y_dot = y_dot + y_acc * self.tau
 
-        # Check if over max velocity, and return True if it is violating constraint
-        rH = np.sqrt(x**2 + y**2)  # m, distance between deputy and chief
+        # Check max velocity, and return True if it is violating constraint
+        rH = np.sqrt(x**2 + y**2)          # m, distance between deputy and chief
         vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
-        vH_max = 2 * self.n * self.rH + self.vel_threshold  # Max Velocity # Max Velocity
+        vH_max = 2 * self.n * self.rH + self.vel_threshold  # Max Velocity
 
         # If violating, return True
         if vH > vH_max:
