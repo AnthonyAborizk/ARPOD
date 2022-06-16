@@ -4,8 +4,11 @@
 Created by Kyle Dunlap and Kai Delsing
 Mentor: Kerianne Hobbs
 
-Modified by Anthoy Aborizk
+Modified by Anthony Aborizk
 Mentor: Scott Nivison
+
+Modified by Josh Thompson
+Mentor: Anthony Aborizk
 
 Description:
 	A deputy (chaser) spacecraft is trying to dock with the chief (target) spacecraft in Hill's frame. 
@@ -67,6 +70,7 @@ import numpy as np
 from pyparsing import java_style_comment
 from scipy import integrate
 from envs.docking.rendering import DockingRender as render
+import random
 
 
 class SpacecraftDocking(gym.Env):
@@ -82,12 +86,11 @@ class SpacecraftDocking(gym.Env):
         
         self.mass_deputy = 12       # kg mass of chaser
         self.n = 0.001027           # rad/sec (mean motion)
-        
         self.tau = 1                # sec (time step) - time constant; how fast chaser is moving
         
         # Either 'Quad', 'RK45', or 'Euler' (default)
-        self.integrator = 'Euler' #define integrator
-        self.force_magnitude = 1    # Newtons
+        self.integrator = 'Euler' #define which integrator will be used
+        self.force_magnitude = 1    # Newton(s)
         
         # m (In either direction)
         self.x_threshold = 1.5 * self.position_deputy
@@ -108,7 +111,7 @@ class SpacecraftDocking(gym.Env):
         # Changes reward for different RTA, either 'NoRTA', 'CBF', 'SVL', 'ASIF', or 'SBSF'
         self.RTA_reward = 'NoRTA'
 
-        #For Tensorboard Plots#
+        #For Tensorboard Plots
         self.RTA_on = False  # Flag for if RTA is on or not, used for rewards
         self.success = 0  # Used to count success rate for an epoch
         self.failure = 0  # Used to count out of bounds rate for an epoch
@@ -137,21 +140,30 @@ class SpacecraftDocking(gym.Env):
         self.trace = 8       # (steps) spacing between trace dots
         self.traceMin = True  # sets trace size to 1 (minimum) if true
         self.tracectr = self.trace
+        
+        #Noise Measurements
+        #account for noise
+        self.nn=0
+        self.mm=True
+        if self.mm==True:
+            self.noise=self.nn+random.randint(0,1)
+        else:
+            self.noise=self.nn        
 
         #Customization Options
         # gym thing - must be set to show up
         self.viewer = None
         # if set to true, it will print resolution
         self.showRes = False
-        # sets the size of the rendering
+        # sets the size of the rendering (size of window)
         self.scale_factor = .5 * 500 / self.position_deputy
         # if velocity arrow is shown
         self.velocityArrow = True
-        self.forceArrow = True                              # if force arrow is shown
-        self.bg_color = (0, 0, .15)                         # r,g,b
+        self.forceArrow = True                  # if force arrow is shown
+        self.bg_color = (0, 0, .15)             # r,g,b
         #color of background (sky)
         
-        self.stars = 400                                    # sets number of stars; adding more makes program run slower
+        self.stars = 400             # sets number of stars; adding more makes program run slower
         # Set to true to print termination condition
         self.termination_condition = False
         
@@ -191,24 +203,24 @@ class SpacecraftDocking(gym.Env):
         # random angle, starts 10km away
         theta = self.np_random.uniform(low=0, high=2*math.pi) #rad
         #gives original angle relative to target; controls start angle
-        
+       
         self.x_deputy = self.position_deputy*math.cos(theta)  # m (x distance to chaser)
-        self.y_deputy = self.position_deputy*math.sin(theta)  # m (y distance to chaser)
+        self.y_deputy = self.position_deputy*math.sin(theta)  # m (y distance to chaser)   
             
-        #compare to origin (target)
-        print('x is',self.x_deputy,'m')
-        print('y is',self.y_deputy,'m')  
-        print('angle relative to target is',theta*(180/math.pi),'degrees') 
-        if self.x_deputy<self.x_chief:
-            print('the chaser needs to move right')     
-        elif self.x_deputy>self.x_chief:
-            print('the chaser needs to move left')
+        # #compare to origin (target)
+        # print('x is',self.x_deputy,'m')
+        # print('y is',self.y_deputy,'m')  
+        # print('angle relative to target is',theta*(180/math.pi),'degrees') 
+        # if self.x_deputy<self.x_chief:
+        #     print('the chaser needs to move right')     
+        # elif self.x_deputy>self.x_chief:
+        #     print('the chaser needs to move left')
             
-        if self.y_deputy<self.y_chief:
-            print('the chaser needs to move up')     
-        elif self.y_deputy>self.y_chief:
-            print('the chaser needs to move down')
-                       
+        # if self.y_deputy<self.y_chief:
+        #     print('the chaser needs to move up')     
+        # elif self.y_deputy>self.y_chief:
+        #     print('the chaser needs to move down')
+
         # Random x and y velocity
         #random original velocity
         #controls direction chaser originally goes
@@ -216,28 +228,30 @@ class SpacecraftDocking(gym.Env):
             low=-self.init_velocity, high=self.init_velocity)  # m/s
         y_dot = self.np_random.uniform(
             low=-self.init_velocity, high=self.init_velocity)  # m/s
-        print('xdot is',x_dot,'m/s')
-        print('ydot is',y_dot,'m/s')
+        # print('xdot is',x_dot,'m/s')
+        # print('ydot is',y_dot,'m/s')
         
         self.rH = self.position_deputy  # m (Relative distance from chief)
 
         # Define observation state
         #state vector array
         self.state = np.array([self.x_deputy, self.y_deputy, x_dot, y_dot])
-        
-        print(self.state[0:2])
-        #same values as before when printing x and y (line 194)
-        
         return self.state
     
 
     def mpc_reward(self, observations, actions, steps):
+        '''
+        observations : input state space
+        actions : selected actions
+        steps : counter for step of path in simulation
+        
+        '''
         if (len(observations.shape) == 1):
             observations = np.expand_dims(observations, axis=0)
             actions = np.expand_dims(actions, axis=0)
 
         xx = observations[:, 0]
-        yy = observations[:, 1]  # Observations
+        yy = observations[:, 1]  
         x_dot_obs = observations[:, 2]
         y_dot_obs = observations[:, 3]
         rew = []
@@ -248,6 +262,7 @@ class SpacecraftDocking(gym.Env):
             y_force = actions[i, 1]
             # control_input += (abs(x_force) +
             #                        abs(y_force)) * self.tau
+            
             # Integrate acceleration to calculate velocity
             x_acc = (3 * self.n ** 2 * xx[i]) + (2 * self.n * y_dot_obs[i]) + \
                 (x_force / self.mass_deputy)
@@ -262,6 +277,8 @@ class SpacecraftDocking(gym.Env):
             x = xx[i] + x_dot * self.tau
             y = yy[i] + y_dot * self.tau
             
+            new_state=[x,y,x_dot,y_dot]
+            new_state=np.array(new_state)
             # Relative distance between deputy and chief (assume chief is always at origin)
             rH = np.sqrt(x**2 + y**2)
             #new distance
@@ -287,40 +304,48 @@ class SpacecraftDocking(gym.Env):
                 if vH < vH_min:
                     # Negative reward for being below min velocity
                     reward += -0.0075*abs(vH-vH_min) * self.tau
+                   # print('vH<vH_min')
 
                 if self.RTA_on or vH > vH_max:
                     if self.RTA_reward == 'NoRTA':
                         # Negative reward for being over max velocity
                         reward += -0.0035*abs(vH-vH_max) * self.tau
+                     #   print('over max velocity')
                     else:
                         reward += -0.001 * self.tau  # Negative reward if RTA is on
+                      #  print('rta is on')
 
                 if vH < 2*self.vel_threshold and (self.RTA_on or vH < vH_min or vH > vH_max):
                     if self.RTA_reward == 'NoRTA':
                         # Larger negative reward if violating constraint close to docking
                         reward += -0.0075/2 * self.tau
+                       # print('violate close to docking')
                     else:
                         # Larger negative reward if violating constraint close to docking
                         reward += -0.005/2 * self.tau
+                      #  print('violate close to docking too')
 
             elif abs(x) <= self.pos_threshold and abs(y) <= self.pos_threshold:
                 if vH > self.vel_threshold:
                     reward = -0.001  # Negative reward for crashing
                     self.crash += 1  # Track crash
+                #    print('crash')
                 else:
                     reward = 1  # +1 for docking
                     self.success += 1  # Track success
-                    # print("SUCCESS!!!!")
+                  #  print("SUCCESS!!!!")
             elif steps * self.tau > self.max_time:  # self.control_input > self.max_control or
                 reward = -1  # -1 for over max time or control
                 self.overtime += 1  # Track overtime
+               # print('over max time')
 
             else:
                 reward = -1  # -1 for going out of bounds
                 self.failure += 1  # Track failure
+             #   print('track failure')
             rew.append(reward)
 
-        return rew, done
+        return rew, new_state,done
 
     def get_reward(self, observations, actions):
         if (len(observations.shape) == 1):
@@ -350,37 +375,45 @@ class SpacecraftDocking(gym.Env):
                 if self.vH < self.vH_min:
                     # Negative reward for being below min velocity
                     reward += -0.0075*abs(self.vH-self.vH_min) * self.tau
+                 #   print('below min velocity')
 
                 if self.RTA_on or self.vH > self.vH_max:
                     if self.RTA_reward == 'NoRTA':
                         # Negative reward for being over max velocity
                         reward += -0.0035*abs(self.vH-self.vH_max) * self.tau
+                     #   print('over max velocity')
                     else:
                         reward += -0.001 * self.tau  # Negative reward if RTA is on
+                      #  print('rta on')
 
                 if self.vH < 2*self.vel_threshold and (self.RTA_on or self.vH < self.vH_min or self.vH > self.vH_max):
                     if self.RTA_reward == 'NoRTA':
                         # Larger negative reward if violating constraint close to docking
                         reward += -0.0075/2 * self.tau
+                      #  print('close to docking')
                     else:
                         # Larger negative reward if violating constraint close to docking
                         reward += -0.005/2 * self.tau
+                      #  print('close to docking too')
 
             elif abs(x) <= self.pos_threshold and abs(y) <= self.pos_threshold:
                 if self.vH > self.vel_threshold:
                     reward = -0.001  # Negative reward for crashing
                     self.crash += 1  # Track crash
+                   # print('crash')
                 else:
                     reward = 1  # +1 for docking
                     self.success += 1  # Track success
-                    # print("SUCCESS!!!!")
+                 #   print("SUCCESS!!!!")
             elif self.control_input > self.max_control or self.steps * self.tau > self.max_time:
                 reward = -1  # -1 for over max time or control
                 self.overtime += 1  # Track overtime
+             #   print('over max time')
 
             else:
                 reward = -1  # -1 for going out of bounds
                 self.failure += 1  # Track failure
+               # print('track failure')
             rew.append(reward)
 
         return rew, done
@@ -395,14 +428,15 @@ class SpacecraftDocking(gym.Env):
             assert self.action_space.contains(action), "Invalid action"
         else:
             # Clip action to be within boundaries - only for continuous
-            #makes actions that are outside force_magnitude equal to force_magnitude
+            #makes actions that are outside force_magnitude equal 
+            #to plus or minus force_magnitude
             action = np.clip(action, -self.force_magnitude,
                              self.force_magnitude)
+         
 
         # Extract current state data
-        #print(self.state)
-        #prints first state (same as previous) then every state after because it is in the for loop
         x, y, x_dot, y_dot = self.state
+        current_state=self.state #current state
 
         # if self.action_type == 'Discrete':  # Discrete action space
         #     if action == 0:
@@ -434,6 +468,8 @@ class SpacecraftDocking(gym.Env):
         #         self.y_force = self.force_magnitude
 
         # else:  # Continuous action space
+        action=action.tolist()
+       
         self.x_force, self.y_force = action
 
         # Add total force for given time period
@@ -490,42 +526,94 @@ class SpacecraftDocking(gym.Env):
 
         # Define new observation state
         observation = np.array([x, y, x_dot, y_dot]) 
+        #new state from CW Equations
 
         # Relative distance between deputy and chief (assume chief is always at origin)
-        self.rH = np.sqrt(x**2 + y**2)
+        self.rH = np.sqrt(x**2 + y**2) #distance magnitude
         self.vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
         self.vH_max = 2 * self.n * self.rH + self.vel_threshold  # Max Velocity
         self.vH_min = 1/2 * self.n * self.rH - self.vel_threshold  # Min Velocity
         rew, done = self.get_reward(observation, action)
         self.state = observation
-        reward = {}
-        reward['rew'] = rew
-        reward['crash'] = self.crash
-        reward['failure'] = self.failure
-        reward['overtime'] = self.overtime
-        reward['success'] = self.success
+    
+        new_state=self.state
+        #new state
+         
+        #reward = {}
+        # reward['rew'] = rew
+        # reward['crash'] = self.crash
+        # reward['failure'] = self.failure
+        # reward['overtime'] = self.overtime
+        # reward['success'] = self.success
         
         
+                
 
         #conditions for phases    
         if self.rH>10000:
             #phase 1, 2 DOF
-            self.state=self.state
+            self.state=self.state #dynamics is the same
             self.alpha=math.atan(self.state[2]/self.state[1])
-            self.y_meas=self.alpha
+            self.y_meas=self.alpha+self.noise
         elif self.rH<10000 and self.rH>1000:
             #phase 2, 2 DOF
-            self.state=self.state
+            self.state=self.state #dynamics is the same
             self.alpha=math.atan(self.state[2]/self.state[1])
-            self.y_meas=[self.alpha,self.rH]
-        # elif self.rH<1000:
-        #     #phase 3, 2 DOF
+            self.y_meas=[self.alpha+self.noise,self.rH+self.noise]
+        #elif self.rH<1000:
+            #phase 3, 2 DOF
+            #make cone for LOS
             
         
         
-        return self.state, reward,  done, {}        
+        
+        
+        #center of mass
+        #self.x_com=sum()
+        
+        
+        
+        
+        # #low force
+        # #chemical and electric propulsion
+        # self.force_chem=5
+        # self.force_elec=5
+        
+    
+        
+        
+        return current_state,new_state, rew, done, {}        
    
         # Used to check if velocity is over max velocity constraint
+        
+    def pred(self,act):
+        n=0.001027   
+        mass_deputy=12
+        tau=1
+        x, y, x_dot, y_dot = self.state
+        x_force, y_force = act
+        control_input=0
+        # Add total force for given time period
+        control_input += (abs(x_force) +
+                               abs(y_force)) * tau
+        # Define acceleration functions
+        #CW Equations          
+        #collect x and y force
+        #initiate constants
+      
+        x_acc = (3 * n ** 2 * x) + (2 * n * y_dot) + \
+                (x_force / mass_deputy)
+        y_acc = (-2 * n * x_dot) + (y_force / mass_deputy)
+        # Integrate acceleration to calculate velocity
+        x_dot = x_dot + x_acc * tau
+        y_dot = y_dot + y_acc * tau
+        # Integrate velocity to calculate position
+        x = x + x_dot * tau
+        y = y + y_dot * tau
+        #gives predicted position
+        pred_state=x,y,x_dot,y_dot
+        
+        return pred_state    
     
     def check_velocity(self, x_force, y_force):
         # Extract current state data
