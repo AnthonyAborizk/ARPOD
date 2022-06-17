@@ -1,0 +1,86 @@
+    #     # self.reward_dict = {}
+    #     if (len(observations.shape) == 1):
+    #         observations = np.expand_dims(observations, axis=0)
+    #         actions = np.expand_dims(actions, axis=0)
+    #         batch_mode = False
+    #     else:
+    #         batch_mode = True
+
+    #     # get vars
+    #     curr_pos = observations[:, :2]
+    #     end_pos = np.array([self.x_chief, self.y_chief]
+    #                        )  # observations[:, -2:]
+
+    #     # calc rew
+    #     dist = np.linalg.norm(curr_pos - end_pos, axis=1)
+    #     # self.reward_dict['dist'] = -dist
+
+    #     # done
+    #     dones = np.zeros((observations.shape[0],))
+    #     dones[dist < self.eps] = 1
+
+    #     x, y, _, _ = self.state  # Observations
+
+    #     done = bool(
+    #         (abs(x) <= self.pos_threshold and abs(y) <= self.pos_threshold)
+    #         or abs(x) > self.x_threshold
+    #         or abs(y) > self.y_threshold
+    #         or self.control_input > self.max_control
+    #         or self.steps * self.tau > self.max_time
+    #     )
+
+    #     self.t_total = self.steps * self.tau
+    #         # randomly sample a direction to go in
+    #         # create some random sampling that ouputs a direction vector. vector [* , *] where 0 < (* and *) < 1
+    #         # if s_t+1 is closer to chief than s_t, plus 1 point.
+    #         # Choose this direction as new goal
+    #         # feed goal to next level of hierarchy
+    #         # min((-1+rH_old-self.rH)/2000, -0.00005) * self.tau  # Negative reward for getting closer/further
+    #     if done and self.t_total < self.max_time:
+    #         self.reward_dict['time'] += 0.1
+
+    #     elif done and self.t_total > self.max_time:
+    #         self.reward_dict['time'] += -0.1
+    #         self.overtime += 1  # Track overtime
+
+    #     if self.control_input > self.max_control:
+    #         # -1 for over max time or control
+    #         self.reward_dict['control'] += -0.1
+
+    #     elif self.control_input < self.max_control:
+    #         self.reward_dict['control'] += 0.1
+
+    #     if min(dist) < self.pos_threshold:
+    #         self.reward_dict['dist'] = 1
+    #         # done == True
+    #     else:
+    #         self.reward_dict['dist'] = -1
+    #     if done and dist > self.pos_threshold:
+    #         self.failure += 1  # Track failure
+
+    #     # Print termination condition (if True)
+    #     if done and self.termination_condition:
+    #         if abs(x) <= self.pos_threshold and abs(y) <= self.pos_threshold:
+    #             print('Termination Condition: Successfully Docked')
+    #         elif x < -self.x_threshold:
+    #             print('Termination Condition: BOUNDARY - neg x thresh')
+    #         elif x > self.x_threshold:
+    #             print('Termination Condition: BOUNDARY - pos x thresh')
+    #         elif y < -self.y_threshold:
+    #             print('Termination Condition: BOUNDARY - neg y thresh')
+    #         elif y > self.y_threshold:
+    #             print('Termination Condition: BOUNDARY - pos y thresh')
+    #         elif self.steps * self.tau > self.max_time:
+    #             print('Termination Condition: Out of Time')
+    #         else:
+    #             print('Unknown Termination Condition')
+
+    #     # Return obs, rew, done, info
+    #     # return self.state, reward, done, {}
+    #     self.reward_dict['r_total'] = self.reward_dict['dist'] + \
+    #         self.reward_dict['time'] + self.reward_dict['control']
+
+    # # return
+    #     if(not batch_mode):
+    #         return self.reward_dict['r_total'], done
+    #     return self.reward_dict['r_total'], done
