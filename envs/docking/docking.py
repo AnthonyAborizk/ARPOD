@@ -147,7 +147,7 @@ class SpacecraftDocking(gym.Env):
         # if set to true, it will print resolution
         self.showRes = False
         # sets the size of the rendering (size of window)
-        self.scale_factor = .5 * 500 / self.position_deputy
+        self.scale_factor = .6 * 500 / self.position_deputy
         # if velocity arrow is shown
         self.velocityArrow = False
         self.forceArrow = False           # if force arrow is shown
@@ -286,11 +286,14 @@ class SpacecraftDocking(gym.Env):
 
         # if not dones: 
         rH_old = np.linalg.norm([obs_old[:,0],obs_old[:,1]], axis=0)
-        c = np.array([0, 100, 0])
-        position = [xpos, ypos, 0]
-        val = np.dot(position, c)/ (np.linalg.norm(c, axis=0) * rH)
-        th = np.arctan2(ypos,xpos) 
+        old_pos = [obs_old]
+        c = np.zeros([observations.shape[0], 3])
+        c[:, 1] = 100
+        position = np.array([xpos, ypos, np.zeros(observations.shape[0])]).transpose()
+        val = position[:, 1] * 100 / (100 * rH)  # dot(position, c) / mag(position)*mag(c)
 
+        # current_projection_on_c = position[:, 1] * 100
+        # old_projection_on_c = obs_old[:,1] * 100
         reward = (-1 - rH + rH_old)/2000 * self.TAU
         if ~all(dones):  
             # reward[dones==0] -= rH[dones==0]/100000
@@ -298,7 +301,11 @@ class SpacecraftDocking(gym.Env):
             reward[((dones==0) & (vH > vH_max))] += -0.0035*abs(vH[((dones==0) & (vH > vH_max))]-vH_max[((dones==0) & (vH > vH_max))]) * self.TAU
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH < vH_min))] += -0.0075/2 * self.TAU
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH > vH_max))] += -0.0075/2 * self.TAU
-            reward[((dones==0) & (val >= np.cos(th/2)))] += 0.1
+            # reward[((dones==0) & (val >= np.cos(self.theta_los)))] += 0.1
+            reward[((dones==0) & (rH <= 100) & (val <= np.cos(self.theta_los)))] += -1
+
+            reward[((dones==0) & (rH <= 200) & (val <= np.cos(self.theta_los)) & (ypos > obs_old[:, 1]) ) ] += .0001
+
 
         # elif: 
         if all(dones) != False: 
