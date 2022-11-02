@@ -27,6 +27,7 @@ close:
 
 import math
 import random
+import numpy as np
 import gym
 from gym.envs.classic_control import rendering
 # import matplotlib.pyplot as plt 
@@ -36,97 +37,117 @@ class DockingRender():
     def renderSim(self, mode='human'):
         #define method (function) inside class
         #create scale-adjusted variables
-        x_thresh = self.x_threshold * self.scale_factor
-        y_thresh = self.y_threshold * self.scale_factor
-        screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
-        #changes size of window that opens for simulation
+        if  self.rH > 100: 
+            again = 0
+            holderx = self.x_threshold 
+            holdery = self.y_threshold 
+            x_thresh = self.x_threshold * self.scale_factor
+            y_thresh = self.y_threshold * self.scale_factor
+            screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
 
+            #create dimensions of satellites
+            bodydim =  30 * self.scale_factor
+            panelwid = 50 * self.scale_factor
+            panelhei = 20 * self.scale_factor
+        else: 
+            if self.scale_factor != .5 * 500 / 100:
+                again=1
+            else: 
+                again = 0 
+            self.scale_factor = .5 * 500 / 100
+            holderx = self.x_threshold/10
+            holdery = self.y_threshold/10 
+
+            x_thresh = self.x_threshold/10 * self.scale_factor
+            y_thresh = self.y_threshold/10 * self.scale_factor
+            screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
+
+            self.phase = 3
+            #create dimensions of satellites
+            bodydim =  3 * self.scale_factor
+            panelwid = 5 * self.scale_factor
+            panelhei = 2 * self.scale_factor
+            
+        #changes size of window that opens for simulation
         if self.showRes:
             #print height and width
             print("Height: ", screen_height)
             print("Width: ", screen_width)
             self.showRes = False
 
-        #create dimensions of satellites
-        bodydim = 150 * self.scale_factor
-        panelwid = 250 * self.scale_factor
-        panelhei = 100 * self.scale_factor
-
-
-        if self.viewer is None:
-            self.viewer = rendering.Viewer(screen_width, screen_height) #create render viewer object
+        if self.viewer is None or again == 1:
+            if again==0: 
+                self.viewer = rendering.Viewer(screen_width, screen_height) #create render viewer object
 
             #SKY
             b, t, l, r = 0, y_thresh * 2, 0, x_thresh * 2  #creates sky dimensions
             sky = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates sky polygon
             self.skytrans = rendering.Transform()  #allows sky to be moved
             sky.add_attr(self.skytrans)
-            sky.set_color(self.bg_color[0], self.bg_color[1], self.bg_color[2])  #sets color of sky
+            # sky.set_color(self.bg_color[0], self.bg_color[1], self.bg_color[2])  #sets color of sky
             self.viewer.add_geom(sky)  #adds sky to viewer
-
-            #DEPUTY BODY
-            b, t, l, r = -bodydim, bodydim, -bodydim, bodydim
-            deputy_body = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates deputy body polygon
-            self.deputy_bodytrans = rendering.Transform()  #allows body to be moved
-            deputy_body.add_attr(self.deputy_bodytrans)
-            deputy_body.set_color(.5, .5, .5)  #sets color of body
-            #(.5 .5 .5) is tan
-            #(.2 .5 .5) is blue
-            #(.5 .1 .5) is pink
-            #(.5 .5 .2) is yellow
-            #(.5 .2 .2) is red
-
-            #DEPUTY SOLAR PANEL
-            b, t, l, r = -panelhei, panelhei, -panelwid * 2, panelwid * 2
-            #can change by factor of 10 for actual
-            deputy_panel = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates solar panel polygon
-            #(l,t) top left corner
-            #(r,b) bottom right corner
-            #changing l,r,t,b changes corresponding length
-            
-            self.deputy_panel_trans = rendering.Transform()  #allows panel to be moved
-            deputy_panel.add_attr(self.deputy_panel_trans) #sets panel as part of deputy object
-            deputy_panel.add_attr(self.deputy_bodytrans)
-            deputy_panel.set_color(.2, .2, .5)  #sets color of panel
-            #(.2 .2 .5) is purple
-            #(.2 .9 .5) is green
-            #(0 0 0) is black
-            #(0 0 1) is blue
-            
-            
+   
             #CHIEF BODY
             b, t, l, r = -bodydim, bodydim, -bodydim, bodydim
             chief_body = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates body polygon
             self.chief_bodytrans = rendering.Transform()  #allows body to be moved
             chief_body.add_attr(self.chief_bodytrans)
-            chief_body.set_color(.5, .5, .5)  #sets color of body
-            
+            chief_body.set_color(.6, .6, .6)  #sets color of body
+
+            #LOS
+            s = self.scale_factor
+            chief_los = rendering.FilledPolygon([(0, t), (-1*((self.ellipse_a1*s-t)*np.sin(self.theta_los)), (self.ellipse_a1*s-t)*np.cos(self.theta_los)+t), ((self.ellipse_a1*s-t)*np.sin(self.theta_los), (self.ellipse_a1*s-t)*np.cos(self.theta_los)+t), (0, t)])  #creates solar panel polygon
+            self.chief_los = rendering.Transform()  #allows panel to be moved
+            chief_los.add_attr(self.chief_los)
+            chief_los.add_attr(self.chief_bodytrans) #sets panel as part of chief object
+            chief_los.set_color(.2, .7, .3)  #sets color of panel
+
+            # CHIEF DOCKING PORT 
+            chief_dock_port = rendering.FilledPolygon([(0,t), (-t, 3+t), (t, 3+t), (0,t)])  
+            self.chief_dock_port = rendering.Transform()  #allows body to be moved
+            chief_dock_port.add_attr(self.chief_bodytrans)
+            chief_dock_port.add_attr(self.chief_dock_port)
+            chief_dock_port.set_color(.6, .6, .6)  #sets color of body
+
             #CHIEF SOLAR PANEL
             b, t, l, r = -panelhei, panelhei, -panelwid * 2, panelwid * 2
             chief_panel = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates solar panel polygon
             self.chief_panel_trans = rendering.Transform()  #allows panel to be moved
             chief_panel.add_attr(self.chief_panel_trans)
             chief_panel.add_attr(self.chief_bodytrans) #sets panel as part of chief object
-            chief_panel.set_color(.2, .2, .5)  #sets color of panel
+            chief_panel.set_color(.2, .2, .6)  #sets color of panel
 
+            #DEPUTY BODY
+            b, t, l, r = -bodydim, bodydim, -bodydim, bodydim
+            deputy_body = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates deputy body polygon
+            self.deputy_bodytrans = rendering.Transform()  #allows body to be moved
+            deputy_body.add_attr(self.deputy_bodytrans)
+            deputy_body.set_color(.6, .6, .6)  #sets color of body
+
+            #DEPUTY SOLAR PANEL
+            b, t, l, r = -panelhei, panelhei, -panelwid * 2, panelwid * 2
+            #can change by factor of 10 for actual
+            deputy_panel = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates solar panel polygon
+            self.deputy_panel_trans = rendering.Transform()  #allows panel to be moved
+            deputy_panel.add_attr(self.deputy_panel_trans) #sets panel as part of deputy object
+            deputy_panel.add_attr(self.deputy_bodytrans)
+            deputy_panel.set_color(.2, .2, .6)  #sets color of panel
+
+            # DEPUTY DOCKING PORT 
+            deputy_dock_port = rendering.FilledPolygon([(0,t), (-t, 5+t), (t, 5+t), (0,t)])  
+
+            deputy_dock_port.add_attr(self.deputy_bodytrans)
+            deputy_dock_port.set_color(.6, .6, .6)  #sets color of body
+
+            
             #VELOCITY ARROW
             if self.velocityArrow:
                 velocityArrow = rendering.Line((0, 0),(panelwid * 3, 0)) #length of arrow
                 self.velocityArrowTrans = rendering.Transform()
                 velocityArrow.add_attr(self.velocityArrowTrans)
                 velocityArrow.add_attr(self.deputy_bodytrans)
-                velocityArrow.set_color(.8, .1, .1) #arrow is red
-
-            # #FORCE ARROW#
-            # if self.forceArrow:
-            #     forceArrow = rendering.Line((0, 0),(panelwid * 4, 0))
-            #     self.forceArrowTrans = rendering.Transform()
-            #     forceArrow.add_attr(self.forceArrowTrans)
-            #     forceArrow.add_attr(self.deputy_bodytrans)
-            #     forceArrow.set_color(.1, .8, .1) #arrow that moves a lot
+                velocityArrow.set_color(.8, .1, .1) #arrow is red           
                 
-                
-
             #THRUST BLOCKS
             if self.thrustVis == 'Block':
                 b, t, l, r = -bodydim / 2, bodydim / 2, -panelwid, panelwid #half the panel dimensions
@@ -214,8 +235,10 @@ class DockingRender():
                     self.viewer.add_geom(dot3)  #adds dot into render
 
             self.viewer.add_geom(chief_panel)  #adds solar panel to viewer
+            self.viewer.add_geom(chief_los)
+            self.viewer.add_geom(chief_dock_port)
             self.viewer.add_geom(chief_body)  #adds satellites to viewer
-
+  
             if self.thrustVis == 'Block':
                 self.viewer.add_geom(L_thrust)  #adds solar panel to viewer
                 self.viewer.add_geom(R_thrust)  #adds solar panel to viewer
@@ -231,14 +254,14 @@ class DockingRender():
             #     self.viewer.add_geom(forceArrow)  #adds forceArrow to viewer
 
             self.viewer.add_geom(deputy_body)  #adds body to viewer
-
+            self.viewer.add_geom(deputy_dock_port)
 
         if self.state is None:  #if there is no state (either the simulation has not begun or it has ended), end
             print('No state')
             return None
 
         x = self.state
-        tx, ty = (x[0] + self.x_threshold) * self.scale_factor, (x[1] + self.y_threshold) * self.scale_factor  #pulls the state of the x and y coordinates
+        tx, ty = (x[0] + holderx) * self.scale_factor, (x[1] + holdery) * self.scale_factor  #pulls the state of the x and y coordinates
         self.deputy_bodytrans.set_translation(tx, ty)  #translate deputy
         self.chief_bodytrans.set_translation(self.x_chief + x_thresh, self.y_chief + y_thresh)  #translate chief
         #(tx,ty) gives speed in x and y direction
