@@ -37,12 +37,30 @@ class DockingRender():
     def renderSim(self, mode='human'):
         #define method (function) inside class
         #create scale-adjusted variables
-        if  self.rH > 100: 
+        # if self.rH>=1000: 
+        #     again = 0
+        #     holderx = self.x_threshold 
+        #     holdery = self.y_threshold 
+        #     x_thresh = self.x_threshold * self.scale_factor
+        #     y_thresh = self.y_threshold * self.scale_factor
+        #     screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
+
+        #     #create dimensions of satellites
+        #     bodydim =  300 * self.scale_factor
+        #     panelwid = 500 * self.scale_factor
+        #     panelhei = 200 * self.scale_factor
+        if  self.rH >= 100: 
+            # if self.scale_factor != .6 * 500 / 1000:
+            #     again=1
+            #     self.scale_factor = .6 * 500 / 1000
+            # else: 
+            #     again = 0 
             again = 0
-            holderx = self.x_threshold 
-            holdery = self.y_threshold 
-            x_thresh = self.x_threshold * self.scale_factor
-            y_thresh = self.y_threshold * self.scale_factor
+            holderx = self.x_threshold/(self.position_deputy/1000) 
+            holdery = self.y_threshold/(self.position_deputy/1000)
+
+            x_thresh = holderx * self.scale_factor
+            y_thresh = holdery * self.scale_factor
             screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
 
             #create dimensions of satellites
@@ -50,19 +68,18 @@ class DockingRender():
             panelwid = 50 * self.scale_factor
             panelhei = 20 * self.scale_factor
         else: 
-            if self.scale_factor != .5 * 500 / 100:
+            if self.scale_factor != .6 * 500 / 100:
                 again=1
+                self.scale_factor = .6 * 500 / 100
             else: 
                 again = 0 
-            self.scale_factor = .5 * 500 / 100
-            holderx = self.x_threshold/10
-            holdery = self.y_threshold/10 
+            holderx = self.x_threshold/(self.position_deputy/100)
+            holdery = self.y_threshold/(self.position_deputy/100)
 
-            x_thresh = self.x_threshold/10 * self.scale_factor
-            y_thresh = self.y_threshold/10 * self.scale_factor
+            x_thresh = holderx * self.scale_factor
+            y_thresh = holdery * self.scale_factor
             screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
 
-            self.phase = 3
             #create dimensions of satellites
             bodydim =  3 * self.scale_factor
             panelwid = 5 * self.scale_factor
@@ -388,3 +405,4 @@ class DockingRender():
         if self.viewer is not None:
             self.viewer.close()
             self.viewer = None
+

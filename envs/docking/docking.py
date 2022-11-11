@@ -1,8 +1,8 @@
 '''
-2D - 4D 4-Phsae Spacecraft Docking Environment
+2D 4-Phsae Spacecraft Docking Environment
 
 Created by Anthony Aborizk 
-Inspiration: Kyle Dunlap, Kai Delsing, Kerianne Hobbs, R. Scott Erwin, Christopher Jewison
+Citations: Kyle Dunlap, Kai Delsing, Kerianne Hobbs, R. Scott Erwin, Christopher Jewison
 
 Description:
 	A deputy spacecraft is trying to dock with and relocate the chief spacecraft in
@@ -44,6 +44,7 @@ Reward:
 	-1 for running out of time
     -1 for running out of fuel
     -1 for crashing
+    #todo but wait, there's more!
 
 Starting State:
 	Deputy start 10,000 km away from chief at random angle
@@ -77,15 +78,18 @@ from gym.utils import seeding
 from pyparsing import java_style_comment
 from envs.docking.rendering import DockingRender as render
 
+import os
+import time
+import pickle
 
 class SpacecraftDocking(gym.Env):
 
-    def __init__(self):
+    def __init__(self, logdir=None):
 
         self.x_chief = 0             # m
         self.y_chief = 0             # m
         self.theta_chief = 0         # rad
-        self.position_deputy = 1000  # m (Relative distance from chief)
+        self.position_deputy = 1000 # m (Relative distance from chief)
         self.MASS_DEPUTY = 12        # kg
         self.N = 0.001027            # rad/sec (mean motion)
         self.TAU = 1                 # sec (time step)
@@ -94,7 +98,7 @@ class SpacecraftDocking(gym.Env):
         # m (In either direction)
         self.x_threshold = 1.5 * self.position_deputy
         # m (In either direction)
-        self.y_threshold = 1.5 * self.position_deputy
+        self.y_threshold = 1.5 * self.position_deputy 
         # m (|x| and |y| must be less than this to dock)
         self.pos_threshold = .1
         # m/s (Relative velocity must be less than this to dock)
@@ -102,12 +106,13 @@ class SpacecraftDocking(gym.Env):
         self.max_time = 4000        # seconds
         self.max_control = 2500     # Newtons
         self.init_velocity = (self.position_deputy + 625) / 1125  # m/s (+/- x and y)
-        self.DOF = '3d'                # Degrees of Freedom. 
+        self.DOF = '3d'             # Degrees of Freedom. 
         #For Tensorboard Plots#
         self.success = 0            # Used to count success rate for an epoch
         self.failure = 0            # Used to count out of bounds rate for an epoch
         self.overtime = 0           # Used to count over max time/control for an epoch
         self.crash = 0              # Used to count crash rate for an epoch
+        #todo self.nofuel = 0
 
         #Thrust & Particle Variables#
         # what type of thrust visualization to use. 'Particle', 'Block', 'None'
@@ -131,6 +136,9 @@ class SpacecraftDocking(gym.Env):
         self.trace = 1              # (steps)spacing between trace dots
         self.traceMin = True        # sets trace size to 1 (minimum) if true
         self.tracectr = self.trace
+
+        if logdir: 
+            self.log(None, logdir, True)
 
         #Noise Measurements
         #account for noise
@@ -158,12 +166,17 @@ class SpacecraftDocking(gym.Env):
         # Set to true to print termination condition
         self.termination_condition = True
 
-        high = np.array([np.finfo(np.float32).max,  # x position (Max possible value +inf)
-                         np.finfo(np.float32).max,              # y position
+        high = np.array([np.finfo(np.float32).max,                               # theta max possible
+                         np.finfo(np.float32).max,              # rho position
                          np.finfo(np.float32).max,              # x velocity
                          np.finfo(np.float32).max],             # y velocity
                         dtype=np.float32)
-
+        
+        # low = np.array([0,                               # theta max possible
+        #                  -np.finfo(np.float32).max,              # rho position
+        #                  -np.finfo(np.float32).max,              # x velocity
+        #                  -np.finfo(np.float32).max],             # y velocity
+        #                 dtype=np.float32)
         self.action_select()  # Select discrete or continuous action space
 
         if self.action_type == 'Discrete':  # Discrete action space
@@ -177,7 +190,6 @@ class SpacecraftDocking(gym.Env):
 
         self.seed()  # Generate random seed
 
-
     def action_select(self):  # Defines action type
         self.action_type = 'Discrete'
 
@@ -186,21 +198,21 @@ class SpacecraftDocking(gym.Env):
         return [seed]
 
     def reset(self):  # called before each episode
-        self.steps = -1  # Step counter
+        self.steps = -1         # Step counter
         self.control_input = 0  # Used to sum total control input for an episode
 
         # Use random angle to calculate x and y position
         # random angle, starts 10km away
-        theta = self.np_random.uniform(low=0, high=2*math.pi)
-        self.x_deputy = self.position_deputy*math.cos(theta)  # m
-        self.y_deputy = self.position_deputy*math.sin(theta)  # m
+        self.theta = self.np_random.uniform(low=0, high=2*math.pi)
+        self.x_deputy = self.position_deputy*math.cos(self.theta)  # m
+        self.y_deputy = self.position_deputy*math.sin(self.theta)  # m
         
         # Random x and y velocity
         x_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s
         y_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s
 
         self.rH = self.position_deputy  # m (Relative distance from chief)
-        
+
         if self.DOF == '3rot':
             # Random theta and angular velocity
             self.theta_deputy = self.np_random.uniform(low=0, high=2*math.pi)
@@ -216,7 +228,7 @@ class SpacecraftDocking(gym.Env):
         # self.state = np.array([self.angle, self.rH, x_dot, y_dot])
         return self.state
 
-    def get_reward(self, observations, actions, obs_old, hstep):
+    def get_reward(self, obs, actions, obs_old, hstep):
         '''calculates reward in mpc function 
 
         Args:
@@ -228,8 +240,8 @@ class SpacecraftDocking(gym.Env):
             rewards this step and done conditions: rew and done
         '''
 
-        if (len(observations.shape) == 1):
-            observations = np.expand_dims(observations, axis=0)
+        if (len(obs.shape) == 1):
+            obs = np.expand_dims(obs, axis=0)
             actions = np.expand_dims(actions, axis=0)
             batch_mode = False
         else: 
@@ -242,60 +254,59 @@ class SpacecraftDocking(gym.Env):
 
         if (len(obs_old.shape) == 1):
             obs_old = np.expand_dims(obs_old, axis=0)
-
-        xpos = observations[:, 0]
-        ypos = observations[:, 1]  # Observations
-        x_dot_obs = observations[:, 2]
-        y_dot_obs = observations[:, 3]
-
+        
+        xpos      = obs[:, 0]
+        ypos      = obs[:, 1]  # Observations
+        x_dot_obs = obs[:, 2]
+        y_dot_obs = obs[:, 3]
+        
         rH = np.linalg.norm([xpos,ypos], axis=0)
+
+        if hstep == 1 or hstep == 0: 
+            self.hcinput = self.control_input
         x_force = actions[:, 0]
         y_force = actions[:, 1]
-        control_input = (abs(x_force) + abs(y_force)) * self.TAU
-        
-        if self.DOF == '3rot': 
-            theta = observations[:, 4]
-            theta_dot = observations[:, 5]
-            theta_force = actions[:, 2]
+        self.hcinput += (abs(x_force) + abs(y_force)) * self.TAU
 
-        # for i in range(xpos.shape[0]):
+        if self.DOF == '3rot': 
+            theta = obs[:, 4]
+            theta_dot = obs[:, 5]
+            theta_force = actions[:, 2]
 
         vH = np.linalg.norm([x_dot_obs, y_dot_obs], axis=0)  # Velocity Magnitude
         vH_max = 2 * self.N * rH + self.VEL_THRESH        # Max Velocity
         vH_min = 1/2 * self.N * rH - self.VEL_THRESH      # Min Velocity
 
         # check dones conditions
-        dones = np.zeros((observations.shape[0],))
-        dn1 = np.zeros((observations.shape[0],))
-        dn2 = np.zeros((observations.shape[0],))
-           
-        dn1[abs(ypos) <= self.pos_threshold] = 1
-        dn2[abs(xpos) <= self.pos_threshold] = 1
-        dones[dn1+dn2>1] = 1 # if s/c is out of bounds
-        dones[abs(xpos) > self.x_threshold] = 1
-        dones[abs(ypos) > self.y_threshold] = 1
-        # dones[control_input > self.max_control] = 1
-        dones[(self.steps+hstep) * self.TAU >= self.max_time-1] = 1
+        dones = np.zeros((obs.shape[0],))
+        dones[rH < self.pos_threshold]       = 1    # if s/c is within the docking region
+        dones[abs(xpos) > self.x_threshold]  = 1    # if x position is outside simulation bounds  
+        dones[abs(ypos) > self.y_threshold]  = 1    # if y position is outside simulation bounds
+        dones[self.hcinput > np.ones((obs.shape[0],))*self.max_control] = 1  # upper bound on fuel exceeded
+        dones[(self.steps+hstep) * self.TAU >= self.max_time-1] = 1 # if the time limit has been exceeded 
 
         #calc rewards
         # reward = np.zeros((observations.shape[0],))
-        failure = np.zeros((observations.shape[0],))    
-        success = np.zeros((observations.shape[0],))    
-        crash = np.zeros((observations.shape[0],))    
-        overtime = np.zeros((observations.shape[0],))    
+        failure  = np.zeros((obs.shape[0],))    
+        success  = np.zeros((obs.shape[0],))    
+        crash    = np.zeros((obs.shape[0],))    
+        overtime = np.zeros((obs.shape[0],))    
+        nofuel   = np.zeros((obs.shape[0],))    
 
         # if not dones: 
-        rH_old = np.linalg.norm([obs_old[:,0],obs_old[:,1]], axis=0)
-        old_pos = [obs_old]
-        c = np.zeros([observations.shape[0], 3])
-        c[:, 1] = 100
-        position = np.array([xpos, ypos, np.zeros(observations.shape[0])]).transpose()
-        val = position[:, 1] * 100 / (100 * rH)  # dot(position, c) / mag(position)*mag(c)
+        rH_old   = np.linalg.norm([obs_old[:,0],obs_old[:,1]], axis=0)
+        old_pos  = [obs_old]
+        c        = np.zeros([obs.shape[0], 3])
+        c[:, 1]  = 100
+        position = np.array([xpos, ypos, np.zeros(obs.shape[0])]).transpose()
+        val      = position[:, 1] * 100 / (100 * rH)  # dot(position, c) / mag(position)*mag(c)
 
         # current_projection_on_c = position[:, 1] * 100
         # old_projection_on_c = obs_old[:,1] * 100
         reward = (-1 - rH + rH_old)/2000 * self.TAU
-        if ~all(dones):  
+        reward -= self.hcinput*0.00001
+        reward -= (self.steps+hstep) * 0.00001
+        if ~all(dones):    
             # reward[dones==0] -= rH[dones==0]/100000
             reward[((dones==0) & (vH < vH_min))] += -0.0075*abs(vH[((dones==0) & (vH < vH_min))]-vH_min[((dones==0) & (vH < vH_min))]) * self.TAU
             reward[((dones==0) & (vH > vH_max))] += -0.0035*abs(vH[((dones==0) & (vH > vH_max))]-vH_max[((dones==0) & (vH > vH_max))]) * self.TAU
@@ -303,28 +314,29 @@ class SpacecraftDocking(gym.Env):
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH > vH_max))] += -0.0075/2 * self.TAU
             # reward[((dones==0) & (val >= np.cos(self.theta_los)))] += 0.1
             reward[((dones==0) & (rH <= 100) & (val <= np.cos(self.theta_los)))] += -1
-
             reward[((dones==0) & (rH <= 200) & (val <= np.cos(self.theta_los)) & (ypos > obs_old[:, 1]) ) ] += .0001
-
 
         # elif: 
         if all(dones) != False: 
-            reward[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
-            reward[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
+            reward[((dones==1) & (rH <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
+            reward[((dones==1) & (rH <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
             reward[((dones==1) & ((self.steps+hstep) * self.TAU > self.max_time))] += -1
-            reward[((dones==1) & (abs(xpos) > self.pos_threshold) & (abs(ypos) > self.pos_threshold))] += -1
+            reward[((dones==1) & (rH > self.pos_threshold))] += -1
+            reward[((dones==1) & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] += -1
 
-            success[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] = 1
-            crash[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] = 1
-            failure[((dones==1) & (abs(xpos) > self.pos_threshold) & (abs(ypos) > self.pos_threshold))] = 1
+            success[((dones==1)  & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] = 1
+            crash[((dones==1)    & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] = 1
+            failure[((dones==1)  & (abs(xpos) > self.x_threshold)  & (abs(ypos) > self.y_threshold))] = 1
             overtime[((dones==1) & ((self.steps+hstep) * self.TAU >= self.max_time-1))] = 1
+            nofuel[((dones==1)   & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] = 1
+
 
         info = {}
-        info['success'] = sum(success)
-        info['crash'] = sum(crash)
-        info['failure'] = sum(failure)
+        info['success']  = sum(success)
+        info['crash']    = sum(crash)
+        info['failure']  = sum(failure)
         info['overtime'] = sum(overtime)
-
+        info['nofuel']   = sum(nofuel)
 
         return reward, dones, info
 
@@ -344,11 +356,15 @@ class SpacecraftDocking(gym.Env):
             self.x_force, self.y_force, self.theta_force = action
 
         else: 
-            x, y, x_dot, y_dot = self.state
+            x,y , x_dot, y_dot = self.state
             self.x_force, self.y_force = action
 
+        # if rho <= 1000: 
+        #     x = rho*np.cos(theta)
+        #     y = rho*np.sin(theta)
+
         # Add total force for given time period
-        # self.control_input += (abs(self.x_force) + abs(self.y_force)) * self.TAU
+        self.control_input += (abs(self.x_force) + abs(self.y_force)) * self.TAU
 
         # Integrate Acceleration and Velocity
         if self.integrator == 'RK45':  # Runge-Kutta Integrator
@@ -407,6 +423,12 @@ class SpacecraftDocking(gym.Env):
         self.state = observation
         reward['rew'] = rew
 
+        if self._logdir:
+            self.log(action)
+
+        if done and self._logdir: 
+            self.log(action, done=done)
+
         return self.state, reward, done, {}
 
     # Used to check if velocity is over max velocity constraint
@@ -439,7 +461,7 @@ class SpacecraftDocking(gym.Env):
 
         return value, vH_max, vtheta
 
-     # Rendering Functions
+    # Rendering Functions
     def render(self, mode):
         render.renderSim(self, mode='human')
 
@@ -472,7 +494,46 @@ class SpacecraftDocking(gym.Env):
 
         return next_state.transpose()
 
-# Used to define 'spacecraft-docking-continuous-v0'
+    def log(self, action, data_path=None, initialize=False, done=False):
+        '''
+        loggs observations also logs actions. '''
+        
+        if initialize: 
+            ##################################
+            # CREATE DIRECTORY FOR LOGGING
+            ##################################
+            # data_folder = 'arpod_logs'
+            # data_path = os.path.join(logdir, data_file)
+
+            # if not (os.path.exists(data_path)):
+            #     os.makedirs(data_path)
+
+            logname = 'log' +'_'+ time.strftime("%m-%d-%Y_%H-%M")
+            self._logdir = os.path.join(data_path, logname)
+
+            if not(os.path.exists(self._logdir)):
+                with open(self._logdir, 'w') as fp:
+                # use this line of code if you want to make a directory instead of a file
+                # os.makedirs(self._logdir)
+                    pass
+
+            self._logdata = np.array([])
+          
+            return
+
+        if done: 
+            with open(self._logdir, "wb") as in_file:
+                pickle.dump(self._logdata, in_file)
+        
+        else: 
+            obs = self.state
+            # obs = np.expand_dims(obs, axis=0)
+            combine = np.append(obs, action)
+            if len(self._logdata) == 0 :
+                self._logdata = combine 
+            else: 
+                self._logdata = np.vstack([self._logdata, combine])
+
 
 class SpacecraftDockingContinuous(SpacecraftDocking):
     def action_select(self):  # Defines continuous action space

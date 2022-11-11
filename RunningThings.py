@@ -22,7 +22,7 @@ def policy(Horizon, num_seq, observation, env):
 
     for j in range(1, Horizon):
         rew, _, _=env.get_reward(new_state,act, obs_old, j ) #collect returns from 
-        act=action_mat[:,j,:].reshape(num_seq, 2)      #Horizon x 2
+        act=action_mat[:,j,:].reshape(num_seq, 2)            #Horizon x 2
         obs_old = new_state
         new_state = env.predict(obs_old, act)
         reward+=np.array(rew)               # sum reward for each different path
@@ -32,17 +32,18 @@ def policy(Horizon, num_seq, observation, env):
         
     return chosen_action
 
-plt.figure()                         # Generate figure window
-env = SpacecraftDockingContinuous()  # Call environment script
-state = env.reset()                  # instantiate the envirionment, i.e. collect the initial conditions
+plt.figure()                               # Generate figure window
+logdir = 'data'
+env = SpacecraftDockingContinuous(logdir)  # Call environment script
+state = env.reset()                        # instantiate the envirionment, i.e. collect the initial conditions
 rew = 0
-for k in range(15000):                # sets time of simulation in real life
+for k in range(15000):                     # sets time of simulation in real life
     steps=k
        
     chosen_action = policy(10,1000,state,env)        # gives action with max reward (return of policy)
     state, reward, done, _ = env.step(chosen_action) # plug actions into agent, collect next states
     rew += reward['rew']
-    if k < 800 and k % 750 == 0:    # step sizes are small so we are showing every 8th step
+    if k < 800 and k % 100 == 0:    # step sizes are small so we are showing every 8th step
                                     # Can change this number to make things run faster/slower
                                     # controls size of step in simulation
         env.render(mode='human')
