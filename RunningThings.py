@@ -37,12 +37,14 @@ logdir = 'data'
 env = SpacecraftDockingContinuous(logdir)  # Call environment script
 state = env.reset()                        # instantiate the envirionment, i.e. collect the initial conditions
 rew = 0
+r = []
 for k in range(15000):                     # sets time of simulation in real life
     steps=k
        
     chosen_action = policy(10,1000,state,env)        # gives action with max reward (return of policy)
     state, reward, done, _ = env.step(chosen_action) # plug actions into agent, collect next states
     rew += reward['rew']
+    r+= reward['rew'].tolist()
     if k < 800 and k % 100 == 0:    # step sizes are small so we are showing every 8th step
                                     # Can change this number to make things run faster/slower
                                     # controls size of step in simulation
@@ -54,7 +56,10 @@ for k in range(15000):                     # sets time of simulation in real lif
         print(reward)
         break
 
-env.close()                            #to fix "python is likely shutting down" problem
+env.close()
+plt.figure()                            #to fix "python is likely shutting down" problem
+plt.plot(r)
+plt.show()
 executionTime = (time.time() - startTime)
 print('Execution time in seconds: ' + str(executionTime))
 

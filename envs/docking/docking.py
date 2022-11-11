@@ -1,9 +1,8 @@
 '''
+Autonomous Rendezvous, Proximity Operations, and Docking (ARPOD)
 2D 4-Phsae Spacecraft Docking Environment
-
 Created by Anthony Aborizk 
 Citations: Kyle Dunlap, Kai Delsing, Kerianne Hobbs, R. Scott Erwin, Christopher Jewison
-
 Description:
 	A deputy spacecraft is trying to dock with and relocate the chief spacecraft in
     Hill's frame. The mission is broken into 4 phases. The first beginning 10,000 km
@@ -12,7 +11,6 @@ Description:
     begins at the end of the second, 100 km form the target. Spacecraft must enter a 
     cone and commence docking. The 4th and final phase requires the deputy to relocate 
     the target 20,000 km away.  
-
 Observation (Deputy):
 	Type: Box(4)
 	Num 	Observation 		Min 	Max
@@ -20,7 +18,6 @@ Observation (Deputy):
 	1		y position			-Inf 	+Inf
 	2		x velocity			-Inf 	+Inf
 	3		y velocity			-Inf 	+Inf
-
 Actions (Discrete or Continuous):
 	Type: Discrete(9)
 	Num 	X Force	 	Y Force	 (Newtons)
@@ -33,11 +30,9 @@ Actions (Discrete or Continuous):
 	6		 1			-1
 	7		 1			 0
 	8		 1			 1
-
 	Type: Continuous Box(2,)
 	[X direction, Y direction]
 	Each value between -1 and +1 Newtons
-
 Reward:
 	+1 for reaching the chief 
 	-1 for going out of bounds
@@ -45,23 +40,19 @@ Reward:
     -1 for running out of fuel
     -1 for crashing
     #todo but wait, there's more!
-
 Starting State:
 	Deputy start 10,000 km away from chief at random angle
 	x and y velocity are both between -1.44 and +1.44 m/s
-
 Episode Termination:
 	Deputy relocates chief
 	Deputy hits chief
 	Deputy goes out of bounds
 	Out of time
     Out of fuel
-
 Integrators:
 	Euler: Simplest and quickest
 	Quad: ~4 times slower than Euler
 	RK45: ~10 times slower than Quad
-
 Upgrade plan: 
     Starting with a simple docking env (current)
     Will upgrade to phase three only environment (wip)
@@ -89,7 +80,7 @@ class SpacecraftDocking(gym.Env):
         self.x_chief = 0             # m
         self.y_chief = 0             # m
         self.theta_chief = 0         # rad
-        self.position_deputy = 1000 # m (Relative distance from chief)
+        self.position_deputy = 10000 # m (Relative distance from chief)
         self.MASS_DEPUTY = 12        # kg
         self.N = 0.001027            # rad/sec (mean motion)
         self.TAU = 1                 # sec (time step)
@@ -104,9 +95,9 @@ class SpacecraftDocking(gym.Env):
         # m/s (Relative velocity must be less than this to dock)
         self.VEL_THRESH = .2
         self.max_time = 4000        # seconds
-        self.max_control = 2500     # Newtons
+        #todo self.max_control = 2500     # Newtons
         self.init_velocity = (self.position_deputy + 625) / 1125  # m/s (+/- x and y)
-        self.DOF = '3d'             # Degrees of Freedom. 
+        self.DOF = '3d'                # Degrees of Freedom. 
         #For Tensorboard Plots#
         self.success = 0            # Used to count success rate for an epoch
         self.failure = 0            # Used to count out of bounds rate for an epoch
@@ -166,8 +157,8 @@ class SpacecraftDocking(gym.Env):
         # Set to true to print termination condition
         self.termination_condition = True
 
-        high = np.array([np.finfo(np.float32).max,                               # theta max possible
-                         np.finfo(np.float32).max,              # rho position
+        high = np.array([np.finfo(np.float32).max,  # x position (Max possible value +inf)
+                         np.finfo(np.float32).max,              # y position
                          np.finfo(np.float32).max,              # x velocity
                          np.finfo(np.float32).max],             # y velocity
                         dtype=np.float32)
@@ -230,12 +221,10 @@ class SpacecraftDocking(gym.Env):
 
     def get_reward(self, obs, actions, obs_old, hstep):
         '''calculates reward in mpc function 
-
         Args:
             observations (nparray): array of observations
             actions (nparray): array of actions
             hstep (int): mpc horizon step
-
         Returns:
             rewards this step and done conditions: rew and done
         '''
@@ -303,9 +292,8 @@ class SpacecraftDocking(gym.Env):
 
         # current_projection_on_c = position[:, 1] * 100
         # old_projection_on_c = obs_old[:,1] * 100
-        reward = (-1 - rH + rH_old)/2000 * self.TAU
-        reward -= self.hcinput*0.00001
-        reward -= (self.steps+hstep) * 0.00001
+        reward = (-1 - rH + rH_old)/2000 * self.TAU # close into target 
+        reward -= self.hcinput*0.0001 # conserve fuel
         if ~all(dones):    
             # reward[dones==0] -= rH[dones==0]/100000
             reward[((dones==0) & (vH < vH_min))] += -0.0075*abs(vH[((dones==0) & (vH < vH_min))]-vH_min[((dones==0) & (vH < vH_min))]) * self.TAU
@@ -315,6 +303,8 @@ class SpacecraftDocking(gym.Env):
             # reward[((dones==0) & (val >= np.cos(self.theta_los)))] += 0.1
             reward[((dones==0) & (rH <= 100) & (val <= np.cos(self.theta_los)))] += -1
             reward[((dones==0) & (rH <= 200) & (val <= np.cos(self.theta_los)) & (ypos > obs_old[:, 1]) ) ] += .0001
+            # reward[((dones==0) & )]  # add fuel checkpoint thresholds. Must have x amount of fuel to complete phase n
+
 
         # elif: 
         if all(dones) != False: 
@@ -444,9 +434,8 @@ class SpacecraftDocking(gym.Env):
         y_dot = y_dot + y_acc * self.TAU
 
         # Check if over max velocity, and return True if it is violating constraint
-        rH = np.sqrt(x**2 + y**2)  # m, distance between deputy and chief
-        vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
-        vH_max = 2 * self.N * self.rH + self.VEL_THRESH  # Max Velocity # Max Velocity
+        vH = np.sqrt(x_dot**2 + y_dot**2)                # Velocity Magnitude
+        vH_max = 2 * self.N * self.rH + self.VEL_THRESH  # Max Velocity 
 
         # If violating, return True
         if vH > vH_max:

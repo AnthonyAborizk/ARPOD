@@ -37,25 +37,31 @@ class DockingRender():
     def renderSim(self, mode='human'):
         #define method (function) inside class
         #create scale-adjusted variables
-        # if self.rH>=1000: 
-        #     again = 0
-        #     holderx = self.x_threshold 
-        #     holdery = self.y_threshold 
-        #     x_thresh = self.x_threshold * self.scale_factor
-        #     y_thresh = self.y_threshold * self.scale_factor
-        #     screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
+        again = 0
+        if self.rH>1000: 
+            if self.scale_factor != .6 * 500 / 10000:
+                again=1
+                self.scale_factor = .6 * 500 / 10000
+            else: 
+                again = 0
+            holderx = self.x_threshold 
+            holdery = self.y_threshold 
+            x_thresh = self.x_threshold * self.scale_factor
+            y_thresh = self.y_threshold * self.scale_factor
+            screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
 
-        #     #create dimensions of satellites
-        #     bodydim =  300 * self.scale_factor
-        #     panelwid = 500 * self.scale_factor
-        #     panelhei = 200 * self.scale_factor
-        if  self.rH >= 100: 
-            # if self.scale_factor != .6 * 500 / 1000:
-            #     again=1
-            #     self.scale_factor = .6 * 500 / 1000
-            # else: 
-            #     again = 0 
-            again = 0
+            #create dimensions of satellites
+            bodydim =  300 * self.scale_factor
+            panelwid = 500 * self.scale_factor
+            panelhei = 200 * self.scale_factor
+
+        elif  self.rH > 100: 
+            if self.scale_factor != .6 * 500 / 1000:
+                again=1
+                self.scale_factor = .6 * 500 / 1000
+            else: 
+                again = 0 
+            # again = 0
             holderx = self.x_threshold/(self.position_deputy/1000) 
             holdery = self.y_threshold/(self.position_deputy/1000)
 
