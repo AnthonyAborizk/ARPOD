@@ -37,17 +37,19 @@ class DockingRender():
     def renderSim(self, mode='human'):
         #define method (function) inside class
         #create scale-adjusted variables
-        again = 0
+        # again = 0
         if self.rH>1000: 
             if self.scale_factor != .6 * 500 / 10000:
                 again=1
                 self.scale_factor = .6 * 500 / 10000
+                if self.viewer is None: 
+                    again=0
             else: 
                 again = 0
-            holderx = self.x_threshold 
-            holdery = self.y_threshold 
-            x_thresh = self.x_threshold * self.scale_factor
-            y_thresh = self.y_threshold * self.scale_factor
+            holderx = self.x_threshold*10
+            holdery = self.y_threshold*10
+            x_thresh = holderx * self.scale_factor
+            y_thresh = holdery * self.scale_factor
             screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)
 
             #create dimensions of satellites
@@ -56,9 +58,11 @@ class DockingRender():
             panelhei = 200 * self.scale_factor
 
         elif  self.rH > 100: 
-            if self.scale_factor != .6 * 500 / 1000:
+            if self.scale_factor != .5 * 500 / 1000:
                 again=1
-                self.scale_factor = .6 * 500 / 1000
+                self.scale_factor = .5 * 500 / 1000
+                if self.viewer is None: 
+                    again=0
             else: 
                 again = 0 
             # again = 0
@@ -77,6 +81,8 @@ class DockingRender():
             if self.scale_factor != .6 * 500 / 100:
                 again=1
                 self.scale_factor = .6 * 500 / 100
+                if self.viewer is None: 
+                    again=0
             else: 
                 again = 0 
             holderx = self.x_threshold/(self.position_deputy/100)
@@ -119,7 +125,7 @@ class DockingRender():
 
             #LOS
             s = self.scale_factor
-            chief_los = rendering.FilledPolygon([(0, t), (-1*((self.ellipse_a1*s-t)*np.sin(self.theta_los)), (self.ellipse_a1*s-t)*np.cos(self.theta_los)+t), ((self.ellipse_a1*s-t)*np.sin(self.theta_los), (self.ellipse_a1*s-t)*np.cos(self.theta_los)+t), (0, t)])  #creates solar panel polygon
+            chief_los = rendering.FilledPolygon([(0, t), (-1*((self.ellipse_a1*s-t)*np.tan(self.theta_los)), (self.ellipse_a1*s-t)*np.cos(self.theta_los)+t), ((self.ellipse_a1*s-t)*np.tan(self.theta_los), (self.ellipse_a1*s-t)*np.cos(self.theta_los)+t), (0, t)])  #creates solar panel polygon
             self.chief_los = rendering.Transform()  #allows panel to be moved
             chief_los.add_attr(self.chief_los)
             chief_los.add_attr(self.chief_bodytrans) #sets panel as part of chief object

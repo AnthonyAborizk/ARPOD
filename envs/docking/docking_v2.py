@@ -99,7 +99,7 @@ class SpacecraftDocking(gym.Env):
         self.y_threshold = 1.5 * self.position_deputy
         
         # m (|x| and |y| must be less than this to dock)
-        self.pos_threshold = 100
+        self.pos_threshold = 0.1
         
         # m/s (Relative velocity must be less than this to dock)
         self.vel_threshold = .2
@@ -116,7 +116,7 @@ class SpacecraftDocking(gym.Env):
         self.success = 0  # Used to count success rate for an epoch
         self.failure = 0  # Used to count out of bounds rate for an epoch
         self.overtime = 0  # Used to count over max time/control for an epoch
-        self.crash = 0  # Used to count crash rate for an epoch
+        self.crash = 0     # Used to count crash rate for an epoch
 
         #Thrust & Particle Variables
         # what type of thrust visualization to use. 'Particle', 'Block', 'None'

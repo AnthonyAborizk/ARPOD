@@ -80,22 +80,23 @@ class SpacecraftDocking(gym.Env):
         self.x_chief = 0             # m
         self.y_chief = 0             # m
         self.theta_chief = 0         # rad
-        self.position_deputy = 10000 # m (Relative distance from chief)
+        self.position_deputy = 100  # m (Relative distance from chief)
         self.MASS_DEPUTY = 12        # kg
         self.N = 0.001027            # rad/sec (mean motion)
-        self.TAU = 1                 # sec (time step)
+        self.TAU = .5                 # sec (time step)
         self.integrator = 'Euler'    # Either 'Quad', 'RK45', or 'Euler' (default)
         self.force_magnitude = 1     # Newtons
         # m (In either direction)
         self.x_threshold = 1.5 * self.position_deputy
         # m (In either direction)
-        self.y_threshold = 1.5 * self.position_deputy 
+        self.y_threshold = 1.5 * self.position_deputy
+        
         # m (|x| and |y| must be less than this to dock)
         self.pos_threshold = .1
         # m/s (Relative velocity must be less than this to dock)
         self.VEL_THRESH = .2
         self.max_time = 4000        # seconds
-        #todo self.max_control = 2500     # Newtons
+        self.max_control = 2500     # Newtons
         self.init_velocity = (self.position_deputy + 625) / 1125  # m/s (+/- x and y)
         self.DOF = '3d'                # Degrees of Freedom. 
         #For Tensorboard Plots#
@@ -103,7 +104,6 @@ class SpacecraftDocking(gym.Env):
         self.failure = 0            # Used to count out of bounds rate for an epoch
         self.overtime = 0           # Used to count over max time/control for an epoch
         self.crash = 0              # Used to count crash rate for an epoch
-        #todo self.nofuel = 0
 
         #Thrust & Particle Variables#
         # what type of thrust visualization to use. 'Particle', 'Block', 'None'
@@ -162,12 +162,7 @@ class SpacecraftDocking(gym.Env):
                          np.finfo(np.float32).max,              # x velocity
                          np.finfo(np.float32).max],             # y velocity
                         dtype=np.float32)
-        
-        # low = np.array([0,                               # theta max possible
-        #                  -np.finfo(np.float32).max,              # rho position
-        #                  -np.finfo(np.float32).max,              # x velocity
-        #                  -np.finfo(np.float32).max],             # y velocity
-        #                 dtype=np.float32)
+
         self.action_select()  # Select discrete or continuous action space
 
         if self.action_type == 'Discrete':  # Discrete action space
@@ -194,16 +189,18 @@ class SpacecraftDocking(gym.Env):
 
         # Use random angle to calculate x and y position
         # random angle, starts 10km away
-        self.theta = self.np_random.uniform(low=0, high=2*math.pi)
-        self.x_deputy = self.position_deputy*math.cos(self.theta)  # m
-        self.y_deputy = self.position_deputy*math.sin(self.theta)  # m
+        # theta = self.np_random.uniform(low=0, high=2*math.pi)
+
+        theta = self.np_random.uniform(low=math.pi/3+.01, high=2*math.pi/3-.01)
+        self.x_deputy = self.position_deputy*math.cos(theta)  # m
+        self.y_deputy = self.position_deputy*math.sin(theta)  # m
         
         # Random x and y velocity
         x_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s
         y_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s
 
         self.rH = self.position_deputy  # m (Relative distance from chief)
-
+        
         if self.DOF == '3rot':
             # Random theta and angular velocity
             self.theta_deputy = self.np_random.uniform(low=0, high=2*math.pi)
@@ -213,10 +210,6 @@ class SpacecraftDocking(gym.Env):
         else: 
             self.state = np.array([self.x_deputy, self.y_deputy, x_dot, y_dot])
 
-        # self.angle = np.arctan2(self.x_deputy, self.y_deputy)
-        # Define observation state
-
-        # self.state = np.array([self.angle, self.rH, x_dot, y_dot])
         return self.state
 
     def get_reward(self, obs, actions, obs_old, hstep):
@@ -243,92 +236,97 @@ class SpacecraftDocking(gym.Env):
 
         if (len(obs_old.shape) == 1):
             obs_old = np.expand_dims(obs_old, axis=0)
-        
+
         xpos      = obs[:, 0]
         ypos      = obs[:, 1]  # Observations
         x_dot_obs = obs[:, 2]
         y_dot_obs = obs[:, 3]
-        
-        rH = np.linalg.norm([xpos,ypos], axis=0)
 
+        rH = np.linalg.norm([xpos,ypos], axis=0)
         if hstep == 1 or hstep == 0: 
             self.hcinput = self.control_input
         x_force = actions[:, 0]
         y_force = actions[:, 1]
         self.hcinput += (abs(x_force) + abs(y_force)) * self.TAU
-
+        
         if self.DOF == '3rot': 
             theta = obs[:, 4]
             theta_dot = obs[:, 5]
             theta_force = actions[:, 2]
 
+        # for i in range(xpos.shape[0]):
+
         vH = np.linalg.norm([x_dot_obs, y_dot_obs], axis=0)  # Velocity Magnitude
         vH_max = 2 * self.N * rH + self.VEL_THRESH        # Max Velocity
         vH_min = 1/2 * self.N * rH - self.VEL_THRESH      # Min Velocity
 
-        # check dones conditions
-        dones = np.zeros((obs.shape[0],))
-        dones[rH < self.pos_threshold]       = 1    # if s/c is within the docking region
-        dones[abs(xpos) > self.x_threshold]  = 1    # if x position is outside simulation bounds  
-        dones[abs(ypos) > self.y_threshold]  = 1    # if y position is outside simulation bounds
-        dones[self.hcinput > np.ones((obs.shape[0],))*self.max_control] = 1  # upper bound on fuel exceeded
-        dones[(self.steps+hstep) * self.TAU >= self.max_time-1] = 1 # if the time limit has been exceeded 
-
-        #calc rewards
-        # reward = np.zeros((observations.shape[0],))
-        failure  = np.zeros((obs.shape[0],))    
-        success  = np.zeros((obs.shape[0],))    
-        crash    = np.zeros((obs.shape[0],))    
-        overtime = np.zeros((obs.shape[0],))    
-        nofuel   = np.zeros((obs.shape[0],))    
-
-        # if not dones: 
-        rH_old   = np.linalg.norm([obs_old[:,0],obs_old[:,1]], axis=0)
-        old_pos  = [obs_old]
+        rH_old = np.linalg.norm([obs_old[:,0],obs_old[:,1]], axis=0)
         c        = np.zeros([obs.shape[0], 3])
         c[:, 1]  = 100
         position = np.array([xpos, ypos, np.zeros(obs.shape[0])]).transpose()
         val      = position[:, 1] * 100 / (100 * rH)  # dot(position, c) / mag(position)*mag(c)
+        # check dones conditions
+        
+        # check dones conditions
+        dones = np.zeros((obs.shape[0],))   # initialize dones vector
+        dn1 = np.zeros((obs.shape[0],))
+        dn2 = np.zeros((obs.shape[0],))
 
-        # current_projection_on_c = position[:, 1] * 100
-        # old_projection_on_c = obs_old[:,1] * 100
-        reward = (-1 - rH + rH_old)/2000 * self.TAU # close into target 
-        reward -= self.hcinput*0.0001 # conserve fuel
+        dn1[abs(ypos) <= self.pos_threshold] = 1
+        dn2[abs(xpos) <= self.pos_threshold] = 1
+        dones[dn1+dn2>1] = 1 # if s/c is within docking bounds
+        dones[abs(xpos) > self.x_threshold] = 1  # out of bounds #! removed for hrl
+        dones[abs(ypos) > self.y_threshold] = 1  # out of bounds #! REMOVED FOR HRL
+        #todo dones[self.control_input > self.max_control] = 1
+        dones[(self.steps+hstep) * self.TAU >= self.max_time-1] = 1
+
+        #calc rewards
+        # reward = np.zeros((obs.shape[0],))
+        failure  = np.zeros((obs.shape[0],))   
+        success  = np.zeros((obs.shape[0],))    
+        crash    = np.zeros((obs.shape[0],))    
+        overtime = np.zeros((obs.shape[0],))    
+    
+        # if not dones: 
+        rH_old = np.linalg.norm([obs_old[:,0],obs_old[:,1]], axis=0)
+        # old_pos = [obs_old]
+        c = np.zeros([obs.shape[0], 3])
+        c[:, 1] = 100
+        position = np.array([xpos, ypos, np.zeros(obs.shape[0])]).transpose()
+        val = position[:, 1] * 100 / (100 * rH)  # dot(position, c) / mag(position)*mag(c)
+
+        reward = (-1 - rH + rH_old)/2000 * self.TAU # reward for getting closer to target
         if ~all(dones):    
             # reward[dones==0] -= rH[dones==0]/100000
-            reward[((dones==0) & (vH < vH_min))] += -0.0075*abs(vH[((dones==0) & (vH < vH_min))]-vH_min[((dones==0) & (vH < vH_min))]) * self.TAU
+            # # stay within vel const
+            reward[((dones==0) & (vH < vH_min))] += -0.0075*abs(vH[((dones==0) & (vH < vH_min))]-vH_min[((dones==0) & (vH < vH_min))]) * self.TAU 
             reward[((dones==0) & (vH > vH_max))] += -0.0035*abs(vH[((dones==0) & (vH > vH_max))]-vH_max[((dones==0) & (vH > vH_max))]) * self.TAU
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH < vH_min))] += -0.0075/2 * self.TAU
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH > vH_max))] += -0.0075/2 * self.TAU
-            # reward[((dones==0) & (val >= np.cos(self.theta_los)))] += 0.1
-            reward[((dones==0) & (rH <= 100) & (val <= np.cos(self.theta_los)))] += -1
-            reward[((dones==0) & (rH <= 200) & (val <= np.cos(self.theta_los)) & (ypos > obs_old[:, 1]) ) ] += .0001
-            # reward[((dones==0) & )]  # add fuel checkpoint thresholds. Must have x amount of fuel to complete phase n
+            # reward[((dones==0) & (val >= math.cos(self.theta_los)))] += 0.1
+            #? if not done, within 100 m, not inside LoS and not within docking region
+            reward[((dones==0) & (rH <= 100) & (val < math.cos(self.theta_los)) & (abs(xpos) > self.pos_threshold) & (abs(ypos) > self.pos_threshold))] += -10
+            # reward[((dones==0) & (rH <= 200) & (val <= math.cos(self.theta_los)) & (ypos > obs_old[:, 1]) ) ] += .0001
 
-
-        # elif: 
         if all(dones) != False: 
-            reward[((dones==1) & (rH <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
-            reward[((dones==1) & (rH <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
+            reward[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
+            reward[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
             reward[((dones==1) & ((self.steps+hstep) * self.TAU > self.max_time))] += -1
-            reward[((dones==1) & (rH > self.pos_threshold))] += -1
-            reward[((dones==1) & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] += -1
+            reward[((dones==1) & (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] += -1  #! removed for hrl
 
-            success[((dones==1)  & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] = 1
-            crash[((dones==1)    & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] = 1
-            failure[((dones==1)  & (abs(xpos) > self.x_threshold)  & (abs(ypos) > self.y_threshold))] = 1
+            success[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] = 1
+            crash[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] = 1
+            failure[((dones==1) & (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] = 1
             overtime[((dones==1) & ((self.steps+hstep) * self.TAU >= self.max_time-1))] = 1
-            nofuel[((dones==1)   & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] = 1
-
 
         info = {}
-        info['success']  = sum(success)
-        info['crash']    = sum(crash)
-        info['failure']  = sum(failure)
+        info['success'] = sum(success)
+        info['crash'] = sum(crash)
+        info['failure'] = sum(failure) #! removed for hrl
         info['overtime'] = sum(overtime)
-        info['nofuel']   = sum(nofuel)
 
         return reward, dones, info
+
 
     def step(self, action):
         self.steps += 1  # step counter
@@ -346,15 +344,11 @@ class SpacecraftDocking(gym.Env):
             self.x_force, self.y_force, self.theta_force = action
 
         else: 
-            x,y , x_dot, y_dot = self.state
+            x, y, x_dot, y_dot = self.state
             self.x_force, self.y_force = action
 
-        # if rho <= 1000: 
-        #     x = rho*np.cos(theta)
-        #     y = rho*np.sin(theta)
-
         # Add total force for given time period
-        self.control_input += (abs(self.x_force) + abs(self.y_force)) * self.TAU
+        # self.control_input += (abs(self.x_force) + abs(self.y_force)) * self.TAU
 
         # Integrate Acceleration and Velocity
         if self.integrator == 'RK45':  # Runge-Kutta Integrator
@@ -434,8 +428,9 @@ class SpacecraftDocking(gym.Env):
         y_dot = y_dot + y_acc * self.TAU
 
         # Check if over max velocity, and return True if it is violating constraint
-        vH = np.sqrt(x_dot**2 + y_dot**2)                # Velocity Magnitude
-        vH_max = 2 * self.N * self.rH + self.VEL_THRESH  # Max Velocity 
+        rH = np.sqrt(x**2 + y**2)  # m, distance between deputy and chief
+        vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
+        vH_max = 2 * self.N * self.rH + self.VEL_THRESH  # Max Velocity # Max Velocity
 
         # If violating, return True
         if vH > vH_max:
@@ -450,7 +445,7 @@ class SpacecraftDocking(gym.Env):
 
         return value, vH_max, vtheta
 
-    # Rendering Functions
+     # Rendering Functions
     def render(self, mode):
         render.renderSim(self, mode='human')
 
@@ -522,6 +517,20 @@ class SpacecraftDocking(gym.Env):
                 self._logdata = combine 
             else: 
                 self._logdata = np.vstack([self._logdata, combine])
+
+    def cart2pol(self, x, y, x_dot, y_dot):
+        rho   = np.sqrt(x**2 + y**2)
+        theta = np.arctan2(y, x) % (2*np.pi)
+        vH    = (x*x_dot + y*y_dot)/np.sqrt(x**2 + y**2)  # Velocity Magnitude
+        omega = (x*y_dot - x_dot*y)/(x**2 + y**2)
+        return rho, theta, vH, omega
+
+    def pol2cart(self, rho, theta, vH, omega):
+        x = rho*math.cos(theta)
+        y = rho*np.sin(theta)
+        x_dot = vH*math.cos(theta)-rho*omega*math.sin(theta)
+        y_dot = vH*math.sin(theta)+rho*omega*math.cos(theta)
+        return x, y, x_dot, y_dot
 
 
 class SpacecraftDockingContinuous(SpacecraftDocking):
