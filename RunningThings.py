@@ -95,13 +95,13 @@ for i in range(10):
         # else: 
         #     r3+= reward['r3']
         # rho += [reward['rho'] - reward['rho0']]
-        # if k < 1500 and k % 100 == 0:    # step sizes are small so we are showing every 8th step
-        #                                 # Can change this number to make things run faster/slower
-        #                                 # controls size of step in simulation
-        #     env.render(mode='human')
-        # elif k>=1500 and k % 100 == 0: 
-        #     env.render(mode='human')
-        
+        if k < 1500 and k % 100 == 0:    # step sizes are small so we are showing every 8th step
+                                        # Can change this number to make things run faster/slower
+                                        # controls size of step in simulation
+            env.render(mode='human')
+        elif k>=1500 and k % 100 == 0: 
+            env.render(mode='human')
+
         if done: 
             print('Done')
             print(reward)
@@ -115,6 +115,7 @@ plt.plot(r3, label='vmax')
 plt.plot(rho, label='diff')
 plt.legend()
 plt.show()
+
 executionTime = (time.time() - startTime)
 print('Execution time in seconds: ' + str(executionTime))
 

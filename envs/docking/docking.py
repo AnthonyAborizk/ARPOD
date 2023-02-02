@@ -59,8 +59,11 @@ Upgrade plan:
     Add Phase 2, then 1, then 4 (tbd)
 '''
 
+import os
 import gym
 import math
+import time
+import pickle
 import random
 import numpy as np
 from gym import spaces
@@ -69,10 +72,6 @@ from gym.utils import seeding
 from pyparsing import java_style_comment
 from envs.docking.rendering import DockingRender as render
 
-import os
-import time
-import pickle
-
 class SpacecraftDocking(gym.Env):
 
     def __init__(self, logdir=None):
@@ -80,25 +79,31 @@ class SpacecraftDocking(gym.Env):
         self.x_chief = 0             # m
         self.y_chief = 0             # m
         self.theta_chief = 0         # rad
-        self.position_deputy = 100  # m (Relative distance from chief)
-        self.MASS_DEPUTY = 12        # kg
-        self.N = 0.001027            # rad/sec (mean motion)
-        self.TAU = .5                 # sec (time step)
+        self.position_deputy = 1000  # m (Relative distance from chief)
+        self.MASS_DEPUTY = 500       # kg 
+        a = 42164000.                 # semi-major axis of GEO in m
+        mu = 3.986e14                # Earth's gravitaitonal constant m^3/s^2
+        self.N = math.sqrt(mu/a**3)   # rad/sec (mean motion)
+        self.TAU = 1                # sec (time step)
         self.integrator = 'Euler'    # Either 'Quad', 'RK45', or 'Euler' (default)
         self.force_magnitude = 1     # Newtons
+
         # m (In either direction)
         self.x_threshold = 1.5 * self.position_deputy
+
         # m (In either direction)
         self.y_threshold = 1.5 * self.position_deputy
         
         # m (|x| and |y| must be less than this to dock)
         self.pos_threshold = .1
+
         # m/s (Relative velocity must be less than this to dock)
-        self.VEL_THRESH = .2
-        self.max_time = 4000        # seconds
+        self.VEL_THRESH = .05
+        self.max_time = 4*60*60     # seconds
         self.max_control = 2500     # Newtons
         self.init_velocity = (self.position_deputy + 625) / 1125  # m/s (+/- x and y)
         self.DOF = '3d'                # Degrees of Freedom. 
+        self.polar = True
         #For Tensorboard Plots#
         self.success = 0            # Used to count success rate for an epoch
         self.failure = 0            # Used to count out of bounds rate for an epoch
@@ -143,17 +148,22 @@ class SpacecraftDocking(gym.Env):
         #Customization Options
         # gym thing - must be set to show up
         self.viewer = None
+
         # if set to true, it will print resolution
         self.showRes = False
+
         # sets the size of the rendering (size of window)
         self.scale_factor = .6 * 500 / self.position_deputy
+
         # if velocity arrow is shown
         self.velocityArrow = False
         self.forceArrow = False           # if force arrow is shown
         self.LoS = True
         self.bg_color = (0, 0, .15)       # r,g,b
+
         #color of background (sky)
         self.stars = 40                   # sets number of stars; adding more makes program run slower
+        
         # Set to true to print termination condition
         self.termination_condition = True
 
