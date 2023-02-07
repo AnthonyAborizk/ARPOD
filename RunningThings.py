@@ -1,9 +1,10 @@
-from hashlib import new
-from envs.docking import SpacecraftDockingContinuous
-# from envs.docking import ARPODContinuous
-import matplotlib.pyplot as plt
-import numpy as np
 import time
+import math
+import numpy as np
+from hashlib import new
+import matplotlib.pyplot as plt
+# from envs.docking import ARPODContinuous
+from envs.docking import SpacecraftDockingContinuous
 startTime = time.time()
 
 def hrl_policy(Horizon, num_seq, observation, env):
@@ -69,11 +70,14 @@ for i in range(10):
 
     # instantiate the envirionment, i.e. collect the initial conditions
     state = env.reset()                       
-
+    rH = env.rH
     # sets time of simulation in real life
     for k in range(15000):                     
         steps=k
-        
+
+        if rH > 1000: #m
+            angle = np.arctan2(state[1], state[0])
+            
         # gives action with max reward (return of policy)
         chosen_action = policy(5,10000,state,env)
 
@@ -95,11 +99,11 @@ for i in range(10):
         # else: 
         #     r3+= reward['r3']
         # rho += [reward['rho'] - reward['rho0']]
-        if k < 1500 and k % 100 == 0:    # step sizes are small so we are showing every 8th step
+        if  k % 300 == 0:    # step sizes are small so we are showing every 8th step
                                         # Can change this number to make things run faster/slower
                                         # controls size of step in simulation
             env.render(mode='human')
-        elif k>=1500 and k % 100 == 0: 
+        elif k>=15000 and k % 100 == 0: 
             env.render(mode='human')
 
         if done: 

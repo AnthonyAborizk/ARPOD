@@ -25,29 +25,29 @@ close:
 #   added phase circles (changed ellipses to circles - line 125 docking)
 
 
+import gym
 import math
 import random
 import numpy as np
-import gym
-from gym.envs.classic_control import rendering
 # import matplotlib.pyplot as plt 
+from gym.envs.classic_control import rendering
+
 class DockingRender():
-    #define class called DockingRender
 
     def renderSim(self, mode='human'):
         #define method (function) inside class
         #create scale-adjusted variables
         # again = 0
-        if self.rH>1000: 
-            if self.scale_factor != .6 * 500 / 10000:
+        if self.rH>1500: 
+            if self.scale_factor != .5 * 500 / 10000:
                 again=1
-                self.scale_factor = .6 * 500 / 10000
+                self.scale_factor = .5 * 500 / 10000
                 if self.viewer is None: 
                     again=0
             else: 
                 again = 0
-            holderx = self.x_threshold*10
-            holdery = self.y_threshold*10
+            holderx = self.x_threshold
+            holdery = self.y_threshold
             x_thresh = holderx * self.scale_factor
             y_thresh = holdery * self.scale_factor
             screen_width, screen_height = int(x_thresh * 2), int(y_thresh * 2)

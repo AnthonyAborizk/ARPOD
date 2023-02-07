@@ -14,7 +14,7 @@ import math
 
 #* LOAD CTF-LOGS 
 data = []
-filepath = '/home/aborizk_anthony/Orbital_Debris/ARPOD/data/log_01-13-2023_16-19'
+filepath = '/home/aborizk_anthony/Orbital_Debris/ARPOD/data/log_02-02-2023_14-47'
 # filepath = 'data/hrlFirstRun'
 with open(filepath, 'rb') as file: 
     data.append(pickle.load(file))
@@ -57,32 +57,33 @@ plt.plot([0, -100*math.tan(np.pi/6), 100*math.tan(np.pi/6), 0], [0, 100, 100, 0]
 plt.scatter(team, agent, s=1, label='Docking Trajectory')
 plt.xlabel('Local Horizontal [m]')
 plt.ylabel('Local Vertical [m]')
-plt.xlim(-105, 105)
-plt.ylim(-105, 105)
+# plt.xlim(-105, 105)
+# plt.ylim(-105, 105)
 plt.legend()
-# plt.figure()
-# plt.plot(tstep, alive)
-# plt.xlabel('Time Step (hrs)')
-# plt.ylabel('xdot')
-
-# plt.figure()
-# plt.plot(tstep, fuel)
-# plt.xlabel('Time Step (hrs)')
-# plt.ylabel('ydot')
-
-# plt.figure()
-# plt.plot(tstep, flagged)
-# plt.xlabel('Time Step (hrs)')
-# plt.ylabel('action _ x')
-
-# plt.figure()
-# plt.plot(tstep, transfering)
-# plt.xlabel('Time Step (hrs)')
-# plt.ylabel('action _ y')
 
 plt.figure()
-plt.plot(tstep, np.sqrt(transfering**2 + flagged**2), legend='Raw Action Input')
-plt.plot(tstep, sg(np.sqrt(transfering**2 + flagged**2), 101, 2 ), legend='')
+plt.plot(tstep, alive)
+plt.xlabel('Time Step (hrs)')
+plt.ylabel('xdot')
+
+plt.figure()
+plt.plot(tstep, fuel)
+plt.xlabel('Time Step (hrs)')
+plt.ylabel('ydot')
+
+plt.figure()
+plt.plot(tstep, flagged)
+plt.xlabel('Time Step (hrs)')
+plt.ylabel('action _ x')
+
+plt.figure()
+plt.plot(tstep, transfering)
+plt.xlabel('Time Step (hrs)')
+plt.ylabel('action _ y')
+
+plt.figure()
+# plt.plot(tstep, np.sqrt(transfering**2 + flagged**2), legend='Raw Action Input')
+# plt.plot(tstep, sg(np.sqrt(transfering**2 + flagged**2), 101, 2 ), legend='')
 plt.xlabel('Time Step [s] ')
 plt.ylabel('Thrust Magnitude [N]')
 plt.show()

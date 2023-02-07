@@ -1,10 +1,10 @@
 '''
 Autonomous Rendezvous, Proximity Operations, and Docking (ARPOD)
-2D 4-Phsae Spacecraft Docking Environment
+2D 4-Phase Spacecraft Docking Environment
 Created by Anthony Aborizk 
-Citations: Kyle Dunlap, Kai Delsing, Kerianne Hobbs, R. Scott Erwin, Christopher Jewison
+Citations/Inspiration: Kyle Dunlap, Kai Delsing, Kerianne Hobbs, R. Scott Erwin, Christopher Jewison
 Description:
-	A deputy spacecraft is trying to dock with and relocate the chief spacecraft in
+	A deputy spacecraft is trying to dock with and relocate a chief spacecraft in
     Hill's frame. The mission is broken into 4 phases. The first beginning 10,000 km
     from the target with angles-only measurements and ending at 1,000 km. The second 
     picks up where at 1,000 km where range capable measurements are used. The third 
@@ -18,18 +18,7 @@ Observation (Deputy):
 	1		y position			-Inf 	+Inf
 	2		x velocity			-Inf 	+Inf
 	3		y velocity			-Inf 	+Inf
-Actions (Discrete or Continuous):
-	Type: Discrete(9)
-	Num 	X Force	 	Y Force	 (Newtons)
-	0		-1			-1
-	1		-1			 0
-	2		-1			 1
-	3		 0			-1
-	4		 0			 0
-	5		 0			 1
-	6		 1			-1
-	7		 1			 0
-	8		 1			 1
+Actions (Continuous):
 	Type: Continuous Box(2,)
 	[X direction, Y direction]
 	Each value between -1 and +1 Newtons
@@ -54,9 +43,19 @@ Integrators:
 	Quad: ~4 times slower than Euler
 	RK45: ~10 times slower than Quad
 Upgrade plan: 
-    Starting with a simple docking env (current)
-    Will upgrade to phase three only environment (wip)
-    Add Phase 2, then 1, then 4 (tbd)
+    Starting with a simple docking env (done 2022) 
+    Will upgrade to phase three only environment (done 2022)
+    Will add phase 2 and enable switching between the tww (done 2022)
+    Add Phase 4 (wip)
+    Add Phase 1 (wip)
+    Add verious degrees of freedom options (wip)
+    Add noise (wip)
+Addition of DOF
+    The options available for degrees of freedom include: 
+    - 2D = 2D translational motion (default)
+    - 3D = 3D translational motion 
+    - 3Drot = 2D translation + orientation about z(or 'k')-axis
+    - 6D = 3D translation + 3D rotation
 '''
 
 import os
@@ -67,26 +66,39 @@ import pickle
 import random
 import numpy as np
 from gym import spaces
-from scipy import integrate
 from gym.utils import seeding
 from pyparsing import java_style_comment
 from envs.docking.rendering import DockingRender as render
 
-class SpacecraftDocking(gym.Env):
+class SpacecraftDockingContinuous(gym.Env):
 
     def __init__(self, logdir=None):
-
+        '''
+        Some of these initial conditions are taken from  "A Spacecraft
+        Benchmark Problem for Hybrid Control and Estimation" by 
+        Jewison and Erwin
+        '''
         self.x_chief = 0             # m
         self.y_chief = 0             # m
         self.theta_chief = 0         # rad
         self.position_deputy = 1000  # m (Relative distance from chief)
         self.MASS_DEPUTY = 500       # kg 
-        a = 42164000.                 # semi-major axis of GEO in m
+        self.MASS_TARGET = 2000      # kg
+        a = 42164000.                # semi-major axis of GEO in m
         mu = 3.986e14                # Earth's gravitaitonal constant m^3/s^2
-        self.N = math.sqrt(mu/a**3)   # rad/sec (mean motion)
-        self.TAU = 1                # sec (time step)
+        self.N = math.sqrt(mu/a**3)  # rad/sec (mean motion)
+        self.TAU = 1                 # sec (time step)
         self.integrator = 'Euler'    # Either 'Quad', 'RK45', or 'Euler' (default)
-        self.force_magnitude = 1     # Newtons
+        self.force_magnitude = 10    # Newtons
+        
+        if self.position_deputy > 1000: 
+            self.phase = 1
+        elif self.position_deputy > 100: 
+            self.phase = 2
+        elif self.position_deputy == 0: 
+            self.phase = 4
+        else: 
+            self.phase = 3
 
         # m (In either direction)
         self.x_threshold = 1.5 * self.position_deputy
@@ -102,8 +114,8 @@ class SpacecraftDocking(gym.Env):
         self.max_time = 4*60*60     # seconds
         self.max_control = 2500     # Newtons
         self.init_velocity = (self.position_deputy + 625) / 1125  # m/s (+/- x and y)
-        self.DOF = '3d'                # Degrees of Freedom. 
-        self.polar = True
+        self.DOF = '2D'             # Degrees of Freedom. 
+
         #For Tensorboard Plots#
         self.success = 0            # Used to count success rate for an epoch
         self.failure = 0            # Used to count out of bounds rate for an epoch
@@ -168,26 +180,18 @@ class SpacecraftDocking(gym.Env):
         self.termination_condition = True
 
         high = np.array([np.finfo(np.float32).max,  # x position (Max possible value +inf)
-                         np.finfo(np.float32).max,              # y position
-                         np.finfo(np.float32).max,              # x velocity
-                         np.finfo(np.float32).max],             # y velocity
+                         np.finfo(np.float32).max,  # y position
+                         np.finfo(np.float32).max,  # x velocity
+                         np.finfo(np.float32).max], # y velocity
                         dtype=np.float32)
 
-        self.action_select()  # Select discrete or continuous action space
-
-        if self.action_type == 'Discrete':  # Discrete action space
-            self.action_space = spaces.Discrete(9)
-        else:  # Continuous action space
-            self.action_space = spaces.Box(np.array([-self.force_magnitude, -self.force_magnitude]), np.array([
-                                           self.force_magnitude, self.force_magnitude]), dtype=np.float64)
+        self.action_space = spaces.Box(np.array([-self.force_magnitude, -self.force_magnitude]), np.array([
+                                        self.force_magnitude, self.force_magnitude]), dtype=np.float64)
 
         # Continuous observation space
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         self.seed()  # Generate random seed
-
-    def action_select(self):  # Defines action type
-        self.action_type = 'Discrete'
 
     def seed(self, seed=None):  # Sets random seed
         self.np_random, seed = seeding.np_random(seed)
@@ -198,10 +202,11 @@ class SpacecraftDocking(gym.Env):
         self.control_input = 0  # Used to sum total control input for an episode
 
         # Use random angle to calculate x and y position
-        # random angle, starts 10km away
-        # theta = self.np_random.uniform(low=0, high=2*math.pi)
+        if self.phase == 3: 
+            theta = self.np_random.uniform(low=math.pi/3, high=2*math.pi/3)
+        else: 
+            theta = self.np_random.uniform(low=0, high=2*math.pi)
 
-        theta = self.np_random.uniform(low=math.pi/3+.01, high=2*math.pi/3-.01)
         self.x_deputy = self.position_deputy*math.cos(theta)  # m
         self.y_deputy = self.position_deputy*math.sin(theta)  # m
         
@@ -209,21 +214,22 @@ class SpacecraftDocking(gym.Env):
         x_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s
         y_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s
 
-        self.rH = self.position_deputy  # m (Relative distance from chief)
+        # (Relative distance from chief)
+        self.rH = self.position_deputy  # m 
         
-        if self.DOF == '3rot':
-            # Random theta and angular velocity
-            self.theta_deputy = self.np_random.uniform(low=0, high=2*math.pi)
-            theta_dot = self.np_random.uniform(low=-1, high=1)
+        if self.phase == 1:
+            self.state = np.array([-1, theta, x_dot, y_dot]) 
+            return self.state
 
-            self.state = np.array([self.x_deputy, self.y_deputy, x_dot, y_dot, self.theta_deputy, theta_dot])
+        if self.DOF != '2D': 
+            self.state = self.Deg_of_Frdm(x_dot, y_dot)
         else: 
             self.state = np.array([self.x_deputy, self.y_deputy, x_dot, y_dot])
 
         return self.state
 
     def get_reward(self, obs, actions, obs_old, hstep):
-        '''calculates reward in mpc function 
+        '''calculates reward 
         Args:
             observations (nparray): array of observations
             actions (nparray): array of actions
@@ -231,7 +237,6 @@ class SpacecraftDocking(gym.Env):
         Returns:
             rewards this step and done conditions: rew and done
         '''
-
         if (len(obs.shape) == 1):
             obs = np.expand_dims(obs, axis=0)
             actions = np.expand_dims(actions, axis=0)
@@ -240,17 +245,15 @@ class SpacecraftDocking(gym.Env):
             batch_mode = True
         if (len(obs_old.shape) == 1):
             obs_old = np.expand_dims(obs_old, axis=0)
-
         if obs_old[0][0] == None: 
             obs_old = self.state
-
         if (len(obs_old.shape) == 1):
             obs_old = np.expand_dims(obs_old, axis=0)
 
-        xpos      = obs[:, 0]
+        xpos      = obs[:, 0] #
         ypos      = obs[:, 1]  # Observations
-        x_dot_obs = obs[:, 2]
-        y_dot_obs = obs[:, 3]
+        x_dot_obs = obs[:, 2] #
+        y_dot_obs = obs[:, 3]#
 
         rH = np.linalg.norm([xpos,ypos], axis=0)
         if hstep == 1 or hstep == 0: 
@@ -319,10 +322,10 @@ class SpacecraftDocking(gym.Env):
             # reward[((dones==0) & (rH <= 200) & (val <= math.cos(self.theta_los)) & (ypos > obs_old[:, 1]) ) ] += .0001
 
         if all(dones) != False: 
-            reward[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
-            reward[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
-            reward[((dones==1) & ((self.steps+hstep) * self.TAU > self.max_time))] += -1
-            reward[((dones==1) & (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] += -1  #! removed for hrl
+            reward[( (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
+            reward[( (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
+            reward[( ((self.steps+hstep) * self.TAU > self.max_time))] += -1
+            reward[( (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] += -1  #! removed for hrl
 
             success[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] = 1
             crash[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] = 1
@@ -341,75 +344,55 @@ class SpacecraftDocking(gym.Env):
     def step(self, action):
         self.steps += 1  # step counter
 
-        if self.action_type == 'Discrete':
-            # Stop program if invalid action is used
-            assert self.action_space.contains(action), "Invalid action"
-        else:
-            # Clip action to be within boundaries - only for continuous
-            action = np.clip(action, -self.force_magnitude,self.force_magnitude)
+        # Clip action to be within boundaries - only for continuous
+        action = np.clip(action, -self.force_magnitude,self.force_magnitude)
 
         # Extract current state data
         if self.DOF == '3rot':
             x, y, x_dot, y_dot, theta, theta_dot = self.state
             self.x_force, self.y_force, self.theta_force = action
-
         else: 
             x, y, x_dot, y_dot = self.state
             self.x_force, self.y_force = action
 
         # Add total force for given time period
-        # self.control_input += (abs(self.x_force) + abs(self.y_force)) * self.TAU
+        self.control_input += (abs(self.x_force) + abs(self.y_force)) * self.TAU
 
         # Integrate Acceleration and Velocity
-        if self.integrator == 'RK45':  # Runge-Kutta Integrator
-            # Define acceleration functions
-            def x_acc_int(t, x):
-                return (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + (self.x_force / self.MASS_DEPUTY)
-
-            def y_acc_int(t, y):
-                return (-2 * self.N * x_dot) + (self.y_force / self.MASS_DEPUTY)
-            # Integrate acceleration to calculate velocity
-            x_dot = integrate.solve_ivp(
-                x_acc_int, (0, self.TAU), [x_dot]).y[-1, -1]
-            y_dot = integrate.solve_ivp(
-                y_acc_int, (0, self.TAU), [y_dot]).y[-1, -1]
-            # Define velocity functions
-
-            def vel_int(t, x):
-                return x_dot, y_dot
-            # Integrate velocity to calculate position
-            xtemp, ytemp = integrate.solve_ivp(
-                vel_int, (0, self.TAU), [x, y]).y
-            x = xtemp[-1]
-            y = ytemp[-1]
-
-        elif self.integrator == 'Euler':  # Simple Euler Integrator
-            # Define acceleration functions
+        # Define acceleration functions
+        if self.phase < 4: 
             x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
                 (self.x_force / self.MASS_DEPUTY)
             y_acc = (-2 * self.N * x_dot) + (self.y_force / self.MASS_DEPUTY)
-            # Integrate acceleration to calculate velocity
-            x_dot = x_dot + x_acc * self.TAU
-            y_dot = y_dot + y_acc * self.TAU
-            # Integrate velocity to calculate position
-            x = x + x_dot * self.TAU
-            y = y + y_dot * self.TAU
+            #* z_acc = -self.N**2*z + self.z_force/self.MASS_DEPUTY
+        else: 
+            x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
+                (self.x_force / (self.MASS_DEPUTY + self.MASS_TARGET))
+            y_acc = (-2 * self.N * x_dot) + (self.y_force /(self.MASS_DEPUTY + self.MASS_TARGET))
+            #* z_acc = -self.N**2*z + self.z_force/(self.MASS_DEPUTY + self.MASS_TARGET)
 
-        else:  # Default 'Quad' Integrator
-            # Integrate acceleration to calculate velocity
-            x_dot = x_dot + integrate.quad(lambda x: (3 * self.N ** 2 * x) + (
-                2 * self.N * y_dot) + (self.x_force / self.MASS_DEPUTY), 0, self.TAU)[0]
-            y_dot = y_dot + integrate.quad(lambda y: (-2 * self.N * x_dot) + (
-                self.y_force / self.MASS_DEPUTY), 0, self.TAU)[0]
-            # Integrate velocity to calculate position
-            x = x + integrate.quad(lambda x: x_dot, 0, self.TAU)[0]
-            y = y + integrate.quad(lambda y: y_dot, 0, self.TAU)[0]
+        # Integrate acceleration to calculate velocity
+        x_dot = x_dot + x_acc * self.TAU
+        y_dot = y_dot + y_acc * self.TAU
+        #* z_dot = z_dot + z_acc * self.TAU
+
+        # Integrate velocity to calculate position
+        x = x + x_dot * self.TAU
+        y = y + y_dot * self.TAU
+        #* z = z + z_dot * self.TAU
 
         # Define new observation state
         observation = np.array([x, y, x_dot, y_dot])
 
         # Relative distance between deputy and chief (assume chief is always at origin)
         self.rH = np.sqrt(x**2 + y**2)
+
+        if self.rH <= 1000 and self.rH> 100: 
+            self.phase = 2
+        elif self.rH<= 100: 
+            self.phase = 3
+        elif self.rH <= self.pos_threshold:
+            self.phase = 4
         self.vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
         self.vH_max = 2 * self.N * self.rH + self.VEL_THRESH  # Max Velocity
         self.vH_min = 1/2 * self.N * self.rH - self.VEL_THRESH  # Min Velocity
@@ -461,7 +444,6 @@ class SpacecraftDocking(gym.Env):
 
     def close(self):
         render.close(self)
-
 
     def predict(self, obs, action):
         # self.steps += 1  # step counter
@@ -528,21 +510,34 @@ class SpacecraftDocking(gym.Env):
             else: 
                 self._logdata = np.vstack([self._logdata, combine])
 
-    def cart2pol(self, x, y, x_dot, y_dot):
-        rho   = np.sqrt(x**2 + y**2)
-        theta = np.arctan2(y, x) % (2*np.pi)
-        vH    = (x*x_dot + y*y_dot)/np.sqrt(x**2 + y**2)  # Velocity Magnitude
-        omega = (x*y_dot - x_dot*y)/(x**2 + y**2)
-        return rho, theta, vH, omega
+    def Deg_of_Frdm(self, x_dot, y_dot):
+        if self.DOF == '3rot':
+            # Random theta and angular velocity
+            self.theta_z = self.np_random.uniform(low=0, high=2*math.pi)
+            theta_dot = self.np_random.uniform(low=-1, high=1)
+            self.state = np.array([self.x_deputy, self.y_deputy, x_dot, y_dot, self.theta_z, theta_dot])
 
-    def pol2cart(self, rho, theta, vH, omega):
-        x = rho*math.cos(theta)
-        y = rho*np.sin(theta)
-        x_dot = vH*math.cos(theta)-rho*omega*math.sin(theta)
-        y_dot = vH*math.sin(theta)+rho*omega*math.cos(theta)
-        return x, y, x_dot, y_dot
+        elif self.DOF == '3D':
+            self.z_deputy = math.sqrt(self.position_deputy**2 - self.x_deputy**2 - self.y_deputy**2) # m
+            z_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s 
+            self.state = np.array([self.x_deputy, self.y_deputy, self.z_deputy, x_dot, y_dot, z_dot])
 
+        elif self.DOF == '6D': 
+            # position and velocity in z
+            self.z_deputy = math.sqrt(self.position_deputy**2 - self.x_deputy**2 - self.y_deputy**2) # m
+            z_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s 
 
-class SpacecraftDockingContinuous(SpacecraftDocking):
-    def action_select(self):  # Defines continuous action space
-        self.action_type = 'Continuous'
+            # rotation about each axis
+            self.theta_x = self.np_random.uniform(low=0, high=2*math.pi)
+            self.theta_y = self.np_random.uniform(low=0, high=2*math.pi)
+            self.theta_z = self.np_random.uniform(low=0, high=2*math.pi)
+
+            # speed of rotation about each axis
+            theta_dot_x = self.np_random.uniform(low=-1, high=1)
+            theta_dot_y = self.np_random.uniform(low=-1, high=1)
+            theta_dot_z = self.np_random.uniform(low=-1, high=1)
+
+            self.state = np.array([self.x_deputy, self.y_deputy, self.z_deputy,\
+                                    x_dot,           y_dot,           z_dot,\
+                                    self.theta_x, self.theta_y, self.theta_z,\
+                                    theta_dot_x, theta_dot_y, theta_dot_z])
