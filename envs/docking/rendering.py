@@ -1,8 +1,8 @@
 '''
-Rendering for 2D Spacecraft Docking Simulation
+Rendering for 2D (+ orientation about z) spacecraft docking simulation
 
-Created by Kai Delsing
-Mentor: Kerianne Hobbs
+Created by Kai Delsing and Kerianne Hobbs
+Adapted to current version by Anthony Aborizk
 
 Description:
 	A class for rendering the SpacecraftDocking environment.
@@ -19,11 +19,15 @@ close:
     Close the viewer and rendering
 '''
 
-
-#5/10
+#5/10/22
 #   removed green circle (removed force arrows - line 120, 218, 312)
 #   added phase circles (changed ellipses to circles - line 125 docking)
+#   added zoom option at each phase (line 45)
+#   Anthony Aborizk
 
+#2/10/23
+#   added orientation of chaser spacecraft
+#   Anthony Aborizk
 
 import gym
 import math
@@ -37,11 +41,11 @@ class DockingRender():
     def renderSim(self, mode='human'):
         #define method (function) inside class
         #create scale-adjusted variables
-        # again = 0
+
         if self.rH>1500: 
-            if self.scale_factor != .5 * 500 / 10000:
+            if self.scale_factor != .6 * 500 / 10000:
                 again=1
-                self.scale_factor = .5 * 500 / 10000
+                self.scale_factor = .6 * 500 / 10000
                 if self.viewer is None: 
                     again=0
             else: 
@@ -57,10 +61,10 @@ class DockingRender():
             panelwid = 500 * self.scale_factor
             panelhei = 200 * self.scale_factor
 
-        elif  self.rH > 100: 
-            if self.scale_factor != .5 * 500 / 1000:
+        elif  self.rH > 150: 
+            if self.scale_factor != .6 * 500 / 1000:
                 again=1
-                self.scale_factor = .5 * 500 / 1000
+                self.scale_factor = .6 * 500 / 1000
                 if self.viewer is None: 
                     again=0
             else: 
@@ -116,57 +120,58 @@ class DockingRender():
             # sky.set_color(self.bg_color[0], self.bg_color[1], self.bg_color[2])  #sets color of sky
             self.viewer.add_geom(sky)  #adds sky to viewer
    
-            #CHIEF BODY
+            #target BODY
             b, t, l, r = -bodydim, bodydim, -bodydim, bodydim
-            chief_body = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates body polygon
-            self.chief_bodytrans = rendering.Transform()  #allows body to be moved
-            chief_body.add_attr(self.chief_bodytrans)
-            chief_body.set_color(.6, .6, .6)  #sets color of body
+            target_body = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates body polygon
+            self.target_bodytrans = rendering.Transform()  #allows body to be moved
+            target_body.add_attr(self.target_bodytrans)
+            target_body.set_color(.6, .6, .6)  #sets color of body
 
             #LOS
             s = self.scale_factor
-            chief_los = rendering.FilledPolygon([(0, t), (-1*((self.ellipse_a1*s-t)*np.tan(self.theta_los)), (self.ellipse_a1*s-t)*np.cos(self.theta_los)+t), ((self.ellipse_a1*s-t)*np.tan(self.theta_los), (self.ellipse_a1*s-t)*np.cos(self.theta_los)+t), (0, t)])  #creates solar panel polygon
-            self.chief_los = rendering.Transform()  #allows panel to be moved
-            chief_los.add_attr(self.chief_los)
-            chief_los.add_attr(self.chief_bodytrans) #sets panel as part of chief object
-            chief_los.set_color(.2, .7, .3)  #sets color of panel
+            # plt.plot([0, 100*math.tan(np.pi/6), -100*math.tan(np.pi/6), 0], [0, -100, -100, 0], color='orange', label='Line of Sight')
+            target_los = rendering.FilledPolygon([(0, 0), (((self.ellipse_a1*s)*np.tan(self.theta_los)), (-self.ellipse_a1*s)), ((-self.ellipse_a1*s)*np.tan(self.theta_los), (-self.ellipse_a1*s)), (0, 0)])  #creates solar panel polygon
+            self.target_los = rendering.Transform()  #allows panel to be moved
+            target_los.add_attr(self.target_los)
+            target_los.add_attr(self.target_bodytrans) #sets panel as part of target object
+            target_los.set_color(.2, .7, .3)  #sets color of panel
 
-            # CHIEF DOCKING PORT 
-            chief_dock_port = rendering.FilledPolygon([(0,t), (-t, 3+t), (t, 3+t), (0,t)])  
-            self.chief_dock_port = rendering.Transform()  #allows body to be moved
-            chief_dock_port.add_attr(self.chief_bodytrans)
-            chief_dock_port.add_attr(self.chief_dock_port)
-            chief_dock_port.set_color(.6, .6, .6)  #sets color of body
+            # target DOCKING PORT 
+            target_dock_port = rendering.FilledPolygon([(0,t), (t, -4-t), (-t, -4-t), (0,t)])  
+            self.target_dock_port = rendering.Transform()  #allows body to be moved
+            target_dock_port.add_attr(self.target_bodytrans)
+            target_dock_port.add_attr(self.target_dock_port)
+            target_dock_port.set_color(.6, .6, .6)  #sets color of body
 
-            #CHIEF SOLAR PANEL
+            #target SOLAR PANEL
             b, t, l, r = -panelhei, panelhei, -panelwid * 2, panelwid * 2
-            chief_panel = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates solar panel polygon
-            self.chief_panel_trans = rendering.Transform()  #allows panel to be moved
-            chief_panel.add_attr(self.chief_panel_trans)
-            chief_panel.add_attr(self.chief_bodytrans) #sets panel as part of chief object
-            chief_panel.set_color(.2, .2, .6)  #sets color of panel
+            target_panel = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates solar panel polygon
+            self.target_panel_trans = rendering.Transform()  #allows panel to be moved
+            target_panel.add_attr(self.target_panel_trans)
+            target_panel.add_attr(self.target_bodytrans) #sets panel as part of target object
+            target_panel.set_color(.2, .2, .6)  #sets color of panel
 
-            #DEPUTY BODY
+            #chaser BODY
             b, t, l, r = -bodydim, bodydim, -bodydim, bodydim
-            deputy_body = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates deputy body polygon
-            self.deputy_bodytrans = rendering.Transform()  #allows body to be moved
-            deputy_body.add_attr(self.deputy_bodytrans)
-            deputy_body.set_color(.6, .6, .6)  #sets color of body
+            chaser_body = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates chaser body polygon
+            self.chaser_bodytrans = rendering.Transform()  #allows body to be moved
+            chaser_body.add_attr(self.chaser_bodytrans)
+            chaser_body.set_color(.6, .6, .6)  #sets color of body
 
-            #DEPUTY SOLAR PANEL
+            #chaser SOLAR PANEL
             b, t, l, r = -panelhei, panelhei, -panelwid * 2, panelwid * 2
             #can change by factor of 10 for actual
-            deputy_panel = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates solar panel polygon
-            self.deputy_panel_trans = rendering.Transform()  #allows panel to be moved
-            deputy_panel.add_attr(self.deputy_panel_trans) #sets panel as part of deputy object
-            deputy_panel.add_attr(self.deputy_bodytrans)
-            deputy_panel.set_color(.2, .2, .6)  #sets color of panel
+            chaser_panel = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates solar panel polygon
+            self.chaser_panel_trans = rendering.Transform()  #allows panel to be moved
+            chaser_panel.add_attr(self.chaser_panel_trans) #sets panel as part of chaser object
+            chaser_panel.add_attr(self.chaser_bodytrans)
+            chaser_panel.set_color(.2, .2, .6)  #sets color of panel
 
-            # DEPUTY DOCKING PORT 
-            deputy_dock_port = rendering.FilledPolygon([(0,t), (-t, 5+t), (t, 5+t), (0,t)])  
+            # chaser DOCKING PORT 
+            chaser_dock_port = rendering.FilledPolygon([(0,t), (-t, 5+t), (t, 5+t), (0,t)])  
 
-            deputy_dock_port.add_attr(self.deputy_bodytrans)
-            deputy_dock_port.set_color(.6, .6, .6)  #sets color of body
+            chaser_dock_port.add_attr(self.chaser_bodytrans)
+            chaser_dock_port.set_color(.6, .6, .6)  #sets color of body
 
             
             #VELOCITY ARROW
@@ -174,7 +179,7 @@ class DockingRender():
                 velocityArrow = rendering.Line((0, 0),(panelwid * 3, 0)) #length of arrow
                 self.velocityArrowTrans = rendering.Transform()
                 velocityArrow.add_attr(self.velocityArrowTrans)
-                velocityArrow.add_attr(self.deputy_bodytrans)
+                velocityArrow.add_attr(self.chaser_bodytrans)
                 velocityArrow.set_color(.8, .1, .1) #arrow is red           
                 
             #THRUST BLOCKS
@@ -183,24 +188,24 @@ class DockingRender():
                 L_thrust = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates thrust polygon
                 self.L_thrust_trans = rendering.Transform()  #allows thrust to be moved
                 L_thrust.add_attr(self.L_thrust_trans)
-                L_thrust.add_attr(self.deputy_bodytrans)
+                L_thrust.add_attr(self.chaser_bodytrans)
                 L_thrust.set_color(.7, .3, .1)  #sets color of thrust
                 R_thrust = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates thrust polygon
                 self.R_thrust_trans = rendering.Transform()  #allows thrust to be moved
                 R_thrust.add_attr(self.R_thrust_trans)
-                R_thrust.add_attr(self.deputy_bodytrans)
+                R_thrust.add_attr(self.chaser_bodytrans)
                 R_thrust.set_color(.7, .3, .1)  #sets color of thrust
 
                 b, t, l, r = -bodydim / 2, bodydim / 2, -bodydim / 2, bodydim / 2
                 T_thrust = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates thrust polygon
                 self.T_thrust_trans = rendering.Transform()  #allows thrust to be moved
                 T_thrust.add_attr(self.T_thrust_trans)
-                T_thrust.add_attr(self.deputy_bodytrans)
+                T_thrust.add_attr(self.chaser_bodytrans)
                 T_thrust.set_color(.7, .3, .1)  #sets color of thrust
                 B_thrust = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])  #creates thrust polygon
                 self.B_thrust_trans = rendering.Transform()  #allows thrust to be moved
                 B_thrust.add_attr(self.B_thrust_trans)
-                B_thrust.add_attr(self.deputy_bodytrans)
+                B_thrust.add_attr(self.chaser_bodytrans)
                 B_thrust.set_color(.7, .3, .1)  #sets color of thrust
 
             #STARS
@@ -263,10 +268,10 @@ class DockingRender():
                     self.dot3trans.set_translation(x, y)
                     self.viewer.add_geom(dot3)  #adds dot into render
 
-            self.viewer.add_geom(chief_panel)  #adds solar panel to viewer
-            self.viewer.add_geom(chief_los)
-            self.viewer.add_geom(chief_dock_port)
-            self.viewer.add_geom(chief_body)  #adds satellites to viewer
+            self.viewer.add_geom(target_panel)  #adds solar panel to viewer
+            self.viewer.add_geom(target_los)
+            self.viewer.add_geom(target_dock_port)
+            self.viewer.add_geom(target_body)  #adds satellites to viewer
   
             if self.thrustVis == 'Block':
                 self.viewer.add_geom(L_thrust)  #adds solar panel to viewer
@@ -274,7 +279,7 @@ class DockingRender():
                 self.viewer.add_geom(T_thrust)  #adds solar panel to viewer
                 self.viewer.add_geom(B_thrust)  #adds thrust into viewer
 
-            self.viewer.add_geom(deputy_panel)  #adds solar panel to viewer
+            self.viewer.add_geom(chaser_panel)  #adds solar panel to viewer
 
             if self.velocityArrow:
                 self.viewer.add_geom(velocityArrow)  #adds velocityArrow to viewer
@@ -282,18 +287,22 @@ class DockingRender():
             # if self.forceArrow:
             #     self.viewer.add_geom(forceArrow)  #adds forceArrow to viewer
 
-            self.viewer.add_geom(deputy_body)  #adds body to viewer
-            self.viewer.add_geom(deputy_dock_port)
+            self.viewer.add_geom(chaser_body)  #adds body to viewer
+            self.viewer.add_geom(chaser_dock_port)
 
         if self.state is None:  #if there is no state (either the simulation has not begun or it has ended), end
             print('No state')
             return None
 
         x = self.state
-        tx, ty = (x[0] + holderx) * self.scale_factor, (x[1] + holdery) * self.scale_factor  #pulls the state of the x and y coordinates
-        self.deputy_bodytrans.set_translation(tx, ty)  #translate deputy
-        self.chief_bodytrans.set_translation(self.x_chief + x_thresh, self.y_chief + y_thresh)  #translate chief
-        #(tx,ty) gives speed in x and y direction
+        #pulls the state of the x and y coordinates. (tx,ty) gives speed in x and y direction
+        tx, ty = (-1*x[1] + holderx) * self.scale_factor, (x[0] + holdery) * self.scale_factor 
+        #translate chaser 
+        self.chaser_bodytrans.set_translation(tx, ty)  
+        #translate target
+        self.target_bodytrans.set_translation(self.x_chief + x_thresh, self.y_chief + y_thresh) 
+        #rotate chaser
+        self.chaser_bodytrans.set_rotation(x[2])  
 
         #PARTICLE DYNAMICS
         if self.thrustVis == 'Particle':

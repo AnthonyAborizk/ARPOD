@@ -80,20 +80,23 @@ class SpacecraftDockingContinuous(gym.Env):
         '''
         self.x_chief = 0             # m
         self.y_chief = 0             # m
+        self.theta_chief = 0         # rad
         self.position_deputy = 100   # m (Relative distance from chief)
         self.MASS_DEPUTY = 12        # kg 
-        self.MASS_TARGET = 200      # kg
+        self.MASS_TARGET = 2000      # kg
         a = 42164000.                # semi-major axis of GEO in m
         mu = 3.986e14                # Earth's gravitaitonal constant m^3/s^2
-        self.N = math.sqrt(mu/a**3)  # rad/sec (mean motion) (circular orbit)
+        self.N = math.sqrt(mu/a**3)  # rad/sec (mean motion)
         self.TAU = 1                 # sec (time step)
         self.integrator = 'Euler'    # Either 'Quad', 'RK45', or 'Euler' (default)
         self.force_magnitude = 1     # Newtons
-        self.torque_mag = 2*math.pi/180# rad
-        self.inertia_zz = 0.056      # kg-m**2 (1/2 M*R**2)
-
-        if self.position_deputy > 100: 
+        
+        if self.position_deputy > 1000: 
+            self.phase = 1
+        elif self.position_deputy > 100: 
             self.phase = 2
+        elif self.position_deputy == 0: 
+            self.phase = 4
         else: 
             self.phase = 3
 
@@ -106,16 +109,12 @@ class SpacecraftDockingContinuous(gym.Env):
         # m (|x| and |y| must be less than this to dock)
         self.pos_threshold = .1
 
-        # rad (Relative angle must be less than this to dock)
-        self.psi_threshold = 0.25   
-
         # m/s (Relative velocity must be less than this to dock)
-        self.VEL_THRESH = .2        # m/s
+        self.VEL_THRESH = .05
         self.max_time = 4*60*60     # seconds
         self.max_control = 2500     # Newtons
         self.init_velocity = (self.position_deputy + 625) / 1125  # m/s (+/- x and y)
-        self.init_psi = 2*math.pi/180         # angular velocity within [-2, 2] deg/s
-        self.DOF = '3Drot'          # Degrees of Freedom. 
+        self.DOF = '2D'             # Degrees of Freedom. 
 
         #For Tensorboard Plots#
         self.success = 0            # Used to count success rate for an epoch
@@ -182,20 +181,15 @@ class SpacecraftDockingContinuous(gym.Env):
 
         high = np.array([np.finfo(np.float32).max,  # x position (Max possible value +inf)
                          np.finfo(np.float32).max,  # y position
-                         2*np.pi,                   # orientation
                          np.finfo(np.float32).max,  # x velocity
-                         np.finfo(np.float32).max,  # y velocity
-                         np.finfo(np.float32).max], # angular velocity
+                         np.finfo(np.float32).max], # y velocity
                         dtype=np.float32)
-        low = -high
-        low[2] = 0
 
-        self.action_space = spaces.Box(np.array([-self.force_magnitude, -self.force_magnitude, \
-                                                 -self.torque_mag]), np.array([self.force_magnitude,\
-                                                  self.force_magnitude, self.torque_mag]), dtype=np.float32)
+        self.action_space = spaces.Box(np.array([-self.force_magnitude, -self.force_magnitude]), np.array([
+                                        self.force_magnitude, self.force_magnitude]), dtype=np.float64)
 
         # Continuous observation space
-        self.observation_space = spaces.Box(low, high, dtype=np.float32)
+        self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         self.seed()  # Generate random seed
 
@@ -209,24 +203,28 @@ class SpacecraftDockingContinuous(gym.Env):
 
         # Use random angle to calculate x and y position
         if self.phase == 3: 
-            # instantiate within line of sight cone constraints
-            theta = self.np_random.uniform(low=5*math.pi/6, high=7*math.pi/6)
+            theta = self.np_random.uniform(low=math.pi/3, high=2*math.pi/3)
         else: 
             theta = self.np_random.uniform(low=0, high=2*math.pi)
 
         self.x_deputy = self.position_deputy*math.cos(theta)  # m
         self.y_deputy = self.position_deputy*math.sin(theta)  # m
-        self.psi = self.np_random.uniform(low=0, high=2*math.pi)
         
         # Random x and y velocity
         x_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s
         y_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s
-        psi_dot = self.np_random.uniform(low=-self.init_psi, high=self.init_psi)
+
         # (Relative distance from chief)
         self.rH = self.position_deputy  # m 
+        
+        if self.phase == 1:
+            self.state = np.array([-1, theta, x_dot, y_dot]) 
+            return self.state
 
-        # orientation of chaser
-        self.state = np.array([self.x_deputy, self.y_deputy,self.psi, x_dot, y_dot, psi_dot])
+        if self.DOF != '2D': 
+            self.state = self.Deg_of_Frdm(x_dot, y_dot)
+        else: 
+            self.state = np.array([self.x_deputy, self.y_deputy, x_dot, y_dot])
 
         return self.state
 
@@ -252,13 +250,10 @@ class SpacecraftDockingContinuous(gym.Env):
         if (len(obs_old.shape) == 1):
             obs_old = np.expand_dims(obs_old, axis=0)
 
-        xpos        = obs[:, 0]#
-        ypos        = obs[:, 1] #
-        psi         = obs[:, 2]  # 
-                                  # Observations
-        x_dot_obs   = obs[:, 3]  #
-        y_dot_obs   = obs[:, 4] #
-        psi_dot_obs = obs[:, 5]#
+        xpos      = obs[:, 0] #
+        ypos      = obs[:, 1]  # Observations
+        x_dot_obs = obs[:, 2] #
+        y_dot_obs = obs[:, 3]#
 
         rH = np.linalg.norm([xpos,ypos], axis=0)
         if hstep == 1 or hstep == 0: 
@@ -267,115 +262,137 @@ class SpacecraftDockingContinuous(gym.Env):
         y_force = actions[:, 1]
         self.hcinput += (abs(x_force) + abs(y_force)) * self.TAU
         
+        if self.DOF == '3rot': 
+            theta = obs[:, 4]
+            theta_dot = obs[:, 5]
+            theta_force = actions[:, 2]
+
+        # for i in range(xpos.shape[0]):
+
         vH = np.linalg.norm([x_dot_obs, y_dot_obs], axis=0)  # Velocity Magnitude
         vH_max = 2 * self.N * rH + self.VEL_THRESH        # Max Velocity
         vH_min = 1/2 * self.N * rH - self.VEL_THRESH      # Min Velocity
 
         rH_old = np.linalg.norm([obs_old[:,0],obs_old[:,1]], axis=0)
-        val      = xpos * -1 / (1 * rH)  # dot(position, c) / mag(position)*mag(c)
+        c        = np.zeros([obs.shape[0], 3])
+        c[:, 1]  = 100
+        position = np.array([xpos, ypos, np.zeros(obs.shape[0])]).transpose()
+        val      = position[:, 1] * 100 / (100 * rH)  # dot(position, c) / mag(position)*mag(c)
         # check dones conditions
         
         # check dones conditions
         dones = np.zeros((obs.shape[0],))   # initialize dones vector
         dn1 = np.zeros((obs.shape[0],))
         dn2 = np.zeros((obs.shape[0],))
-        dn3 = np.zeros((obs.shape[0],))
 
         dn1[abs(ypos) <= self.pos_threshold] = 1
         dn2[abs(xpos) <= self.pos_threshold] = 1
-
         dones[dn1+dn2>1] = 1 # if s/c is within docking bounds
-        dones[abs(xpos) > self.x_threshold] = 1  # out of bounds 
-        dones[abs(ypos) > self.y_threshold] = 1  # out of bounds 
-        dones[self.control_input > self.max_control] = 1
+        dones[abs(xpos) > self.x_threshold] = 1  # out of bounds #! removed for hrl
+        dones[abs(ypos) > self.y_threshold] = 1  # out of bounds #! REMOVED FOR HRL
+        #todo dones[self.control_input > self.max_control] = 1
         dones[(self.steps+hstep) * self.TAU >= self.max_time-1] = 1
 
         #calc rewards
+        # reward = np.zeros((obs.shape[0],))
         failure  = np.zeros((obs.shape[0],))   
         success  = np.zeros((obs.shape[0],))    
         crash    = np.zeros((obs.shape[0],))    
         overtime = np.zeros((obs.shape[0],))    
-        nofuel   = np.zeros((obs.shape[0],))
+    
+        # if not dones: 
+        rH_old = np.linalg.norm([obs_old[:,0],obs_old[:,1]], axis=0)
+        # old_pos = [obs_old]
+        c = np.zeros([obs.shape[0], 3])
+        c[:, 1] = 100
+        position = np.array([xpos, ypos, np.zeros(obs.shape[0])]).transpose()
+        val = position[:, 1] * 100 / (100 * rH)  # dot(position, c) / mag(position)*mag(c)
 
         reward = (-1 - rH + rH_old)/2000 * self.TAU # reward for getting closer to target
-        reward +=-(psi-0)**2/3000 * self.TAU 
-
         if ~all(dones):    
-            # stay within vel const
+            # reward[dones==0] -= rH[dones==0]/100000
+            # # stay within vel const
             reward[((dones==0) & (vH < vH_min))] += -0.0075*abs(vH[((dones==0) & (vH < vH_min))]-vH_min[((dones==0) & (vH < vH_min))]) * self.TAU 
             reward[((dones==0) & (vH > vH_max))] += -0.0035*abs(vH[((dones==0) & (vH > vH_max))]-vH_max[((dones==0) & (vH > vH_max))]) * self.TAU
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH < vH_min))] += -0.0075/2 * self.TAU
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH > vH_max))] += -0.0075/2 * self.TAU
-
-            reward[((dones==0) & (abs(psi_dot_obs) > 1))] += -0.00075/2 * self.TAU
+            # reward[((dones==0) & (val >= math.cos(self.theta_los)))] += 0.1
             #? if not done, within 100 m, not inside LoS and not within docking region
             reward[((dones==0) & (rH <= 100) & (val < math.cos(self.theta_los)) & (abs(xpos) > self.pos_threshold) & (abs(ypos) > self.pos_threshold))] += -10
-            # reward[((dones==0) & (psi >= self.psi_threshold))] += -.0001
+            # reward[((dones==0) & (rH <= 200) & (val <= math.cos(self.theta_los)) & (ypos > obs_old[:, 1]) ) ] += .0001
 
         if all(dones) != False: 
             reward[( (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
             reward[( (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
             reward[( ((self.steps+hstep) * self.TAU > self.max_time))] += -1
-            reward[( (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] += -1 
-            # reward[((dones==1)  & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] = 1
-            
+            reward[( (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] += -1  #! removed for hrl
+
             success[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] = 1
             crash[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] = 1
             failure[((dones==1) & (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] = 1
             overtime[((dones==1) & ((self.steps+hstep) * self.TAU >= self.max_time-1))] = 1
-            # nofuel[((dones==1)  & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] = 1
 
         info = {}
         info['success'] = sum(success)
-        info['crash']   = sum(crash)
-        info['failure'] = sum(failure)
-        info['overtime']= sum(overtime)
+        info['crash'] = sum(crash)
+        info['failure'] = sum(failure) #! removed for hrl
+        info['overtime'] = sum(overtime)
 
         return reward, dones, info
+
 
     def step(self, action):
         self.steps += 1  # step counter
 
-        # Clip action to be within boundaries
-        action = np.clip(action, [-self.force_magnitude, -self.force_magnitude, -self.torque_mag],\
-                                 [self.force_magnitude, self.force_magnitude, self.torque_mag])
-        # action[-1] = np.clip(action[-1], -self.torque_mag, self.torque_mag)
+        # Clip action to be within boundaries - only for continuous
+        action = np.clip(action, -self.force_magnitude,self.force_magnitude)
 
         # Extract current state data
-        x, y, psi, x_dot, y_dot, psi_dot = self.state
-        self.x_force, self.y_force, self.torque = action
+        if self.DOF == '3rot':
+            x, y, x_dot, y_dot, theta, theta_dot = self.state
+            self.x_force, self.y_force, self.theta_force = action
+        else: 
+            x, y, x_dot, y_dot = self.state
+            self.x_force, self.y_force = action
 
         # Add total force for given time period
         self.control_input += (abs(self.x_force) + abs(self.y_force)) * self.TAU
 
         # Integrate Acceleration and Velocity
         # Define acceleration functions
-
-        x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
-            (self.x_force / self.MASS_DEPUTY)
-        y_acc = (-2 * self.N * x_dot) + (self.y_force / self.MASS_DEPUTY)
-        psi_acc = self.torque/self.inertia_zz 
-        #* z_acc = -self.N**2*z + self.z_force/self.MASS_chaser
+        if self.phase < 4: 
+            x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
+                (self.x_force / self.MASS_DEPUTY)
+            y_acc = (-2 * self.N * x_dot) + (self.y_force / self.MASS_DEPUTY)
+            #* z_acc = -self.N**2*z + self.z_force/self.MASS_DEPUTY
+        else: 
+            x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
+                (self.x_force / (self.MASS_DEPUTY + self.MASS_TARGET))
+            y_acc = (-2 * self.N * x_dot) + (self.y_force /(self.MASS_DEPUTY + self.MASS_TARGET))
+            #* z_acc = -self.N**2*z + self.z_force/(self.MASS_DEPUTY + self.MASS_TARGET)
 
         # Integrate acceleration to calculate velocity
         x_dot = x_dot + x_acc * self.TAU
         y_dot = y_dot + y_acc * self.TAU
-        psi_dot = psi_dot + psi_acc * self.TAU
         #* z_dot = z_dot + z_acc * self.TAU
 
         # Integrate velocity to calculate position
         x = x + x_dot * self.TAU
         y = y + y_dot * self.TAU
-        psi = psi + psi_dot * self.TAU
-        # psi = (psi_unwrapped + np.pi) % (2 * np.pi) - np.pi
         #* z = z + z_dot * self.TAU
 
         # Define new observation state
-        observation = np.array([x, y, psi, x_dot, y_dot, psi_dot])
+        observation = np.array([x, y, x_dot, y_dot])
 
         # Relative distance between deputy and chief (assume chief is always at origin)
         self.rH = np.sqrt(x**2 + y**2)
 
+        if self.rH <= 1000 and self.rH> 100: 
+            self.phase = 2
+        elif self.rH<= 100: 
+            self.phase = 3
+        elif self.rH <= self.pos_threshold:
+            self.phase = 4
         self.vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
         self.vH_max = 2 * self.N * self.rH + self.VEL_THRESH  # Max Velocity
         self.vH_min = 1/2 * self.N * self.rH - self.VEL_THRESH  # Min Velocity
@@ -391,6 +408,36 @@ class SpacecraftDockingContinuous(gym.Env):
 
         return self.state, reward, done, {}
 
+    # Used to check if velocity is over max velocity constraint
+    def check_velocity(self, x_force, y_force):
+        # Extract current state data
+        x, y, x_dot, y_dot = self.state
+        # Define acceleration functions
+        x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
+            (x_force / self.MASS_DEPUTY)
+        y_acc = (-2 * self.N * x_dot) + (y_force / self.MASS_DEPUTY)
+        # Integrate acceleration to calculate velocity
+        x_dot = x_dot + x_acc * self.TAU
+        y_dot = y_dot + y_acc * self.TAU
+
+        # Check if over max velocity, and return True if it is violating constraint
+        rH = np.sqrt(x**2 + y**2)  # m, distance between deputy and chief
+        vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
+        vH_max = 2 * self.N * self.rH + self.VEL_THRESH  # Max Velocity # Max Velocity
+
+        # If violating, return True
+        if vH > vH_max:
+            value = True
+        else:
+            value = False
+
+        # Calculate velocity angle
+        vtheta = math.atan(y_dot/x_dot)
+        if x_dot < 0:
+            vtheta += math.pi
+
+        return value, vH_max, vtheta
+
      # Rendering Functions
     def render(self, mode):
         render.renderSim(self, mode='human')
@@ -400,32 +447,26 @@ class SpacecraftDockingContinuous(gym.Env):
 
     def predict(self, obs, action):
         # self.steps += 1  # step counter
-        action = np.clip(action, [-self.force_magnitude, -self.force_magnitude, -self.torque_mag],\
-                                 [self.force_magnitude, self.force_magnitude, self.torque_mag])
+        action = np.clip(action, -self.force_magnitude,self.force_magnitude)
 
         # Extract current state data
-        x, y,psi, x_dot, y_dot, psi_dot = obs.transpose()
+        x, y, x_dot, y_dot = obs.transpose()
 
-        x_force, y_force, torque = action.transpose()
+        x_force, y_force = action.transpose()
 
         # Define acceleration functions
         x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
             (x_force / self.MASS_DEPUTY)
         y_acc = (-2 * self.N * x_dot) + (y_force / self.MASS_DEPUTY)
-        psi_acc = torque/self.inertia_zz 
-
         # Integrate acceleration to calculate velocity
         x_dot = x_dot + x_acc * self.TAU
         y_dot = y_dot + y_acc * self.TAU
-        psi_dot = psi_dot + psi_acc * self.TAU
-
         # Integrate velocity to calculate position
         x = x + x_dot * self.TAU
         y = y + y_dot * self.TAU
-        psi = psi + psi_dot * self.TAU
 
         # Define new observation state
-        next_state = np.array([x, y, psi, x_dot, y_dot, psi_dot])
+        next_state = np.array([x, y, x_dot, y_dot])
 
         return next_state.transpose()
 
@@ -468,3 +509,35 @@ class SpacecraftDockingContinuous(gym.Env):
                 self._logdata = combine 
             else: 
                 self._logdata = np.vstack([self._logdata, combine])
+
+    def Deg_of_Frdm(self, x_dot, y_dot):
+        if self.DOF == '3rot':
+            # Random theta and angular velocity
+            self.theta_z = self.np_random.uniform(low=0, high=2*math.pi)
+            theta_dot = self.np_random.uniform(low=-1, high=1)
+            self.state = np.array([self.x_deputy, self.y_deputy, x_dot, y_dot, self.theta_z, theta_dot])
+
+        elif self.DOF == '3D':
+            self.z_deputy = math.sqrt(self.position_deputy**2 - self.x_deputy**2 - self.y_deputy**2) # m
+            z_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s 
+            self.state = np.array([self.x_deputy, self.y_deputy, self.z_deputy, x_dot, y_dot, z_dot])
+
+        elif self.DOF == '6D': 
+            # position and velocity in z
+            self.z_deputy = math.sqrt(self.position_deputy**2 - self.x_deputy**2 - self.y_deputy**2) # m
+            z_dot = self.np_random.uniform(low=-self.init_velocity, high=self.init_velocity)  # m/s 
+
+            # rotation about each axis
+            self.theta_x = self.np_random.uniform(low=0, high=2*math.pi)
+            self.theta_y = self.np_random.uniform(low=0, high=2*math.pi)
+            self.theta_z = self.np_random.uniform(low=0, high=2*math.pi)
+
+            # speed of rotation about each axis
+            theta_dot_x = self.np_random.uniform(low=-1, high=1)
+            theta_dot_y = self.np_random.uniform(low=-1, high=1)
+            theta_dot_z = self.np_random.uniform(low=-1, high=1)
+
+            self.state = np.array([self.x_deputy, self.y_deputy, self.z_deputy,\
+                                    x_dot,           y_dot,           z_dot,\
+                                    self.theta_x, self.theta_y, self.theta_z,\
+                                    theta_dot_x, theta_dot_y, theta_dot_z])

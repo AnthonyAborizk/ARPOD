@@ -1,51 +1,22 @@
-import time
-import math
 import numpy as np
-from hashlib import new
 import matplotlib.pyplot as plt
-# from envs.docking import ARPODContinuous
 from envs.docking import SpacecraftDockingContinuous
-startTime = time.time()
-
-def hrl_policy(Horizon, num_seq, observation, env):
-
-    low = [0, 0]
-    high = [1, 5]
-    action_mat=(np.random.uniform(low=low, high=high, size=(num_seq, Horizon, 2)))
-    reward = np.zeros(num_seq)
-    obs_old=np.tile(observation, (num_seq,1))       #collect current state from original observation
-    act=action_mat[:, 0,:].reshape(num_seq, 2)      #Horizon x 2
-
-    new_state = env.predict(obs_old, act)
-
-    for j in range(1, Horizon):
-        rew, _, _=env.get_reward(new_state,act, obs_old, j ) #collect returns from 
-        act=action_mat[:,j,:].reshape(num_seq, 2)            #Horizon x 2
-        obs_old = new_state
-        new_state = env.predict(obs_old, act)
-        reward+=np.array(rew)               # sum reward for each different path
-    best_index = reward.argmax()
-    chosen_action=action_mat[best_index][0] # collect first action of path that has highest reward
-
-    return chosen_action
+from scipy.signal import savgol_filter as sg
+import math 
 
 def policy(Horizon, num_seq, observation, env):
-    # num_seq is how many different randoms paths are to be taken
-    # Horizon is how far to look into future in each path
     low = env.action_space.low
     high = env.action_space.high
-    action_mat=(np.random.uniform(low=low, high=high, size=(num_seq, Horizon, 2)))
-    #random Horizon x num_seq x 2 3D matrix of actions
-    # build model predictive controller (MPC)
+    action_mat=(np.random.uniform(low=low, high=high, size=(num_seq, Horizon, 3)))
+
     reward = np.zeros(num_seq)
     obs_old=np.tile(observation, (num_seq,1))       #collect current state from original observation
-    # obs_old = env.state
-    act=action_mat[:, 0,:].reshape(num_seq, 2)     #Horizon x 2
+    act=action_mat[:, 0, :].reshape(num_seq, 3)     #Horizon x 3
     new_state = env.predict(obs_old, act)
 
     for j in range(1, Horizon):
         rew, _, _=env.get_reward(new_state,act, obs_old, j ) #collect returns from 
-        act=action_mat[:,j,:].reshape(num_seq, 2)            #Horizon x 2
+        act=action_mat[:,j,:].reshape(num_seq, 3 )            #Horizon x 2
         obs_old = new_state
         new_state = env.predict(obs_old, act)
         reward+=np.array(rew)               # sum reward for each different path
@@ -55,18 +26,15 @@ def policy(Horizon, num_seq, observation, env):
     return chosen_action
 
 # Generate figure window
-plt.figure()                               
 logdir = 'data'
 
-# Call environment script #! old
 env = SpacecraftDockingContinuous(logdir)  
-# env = ARPODContinuous(logdir)                        #! new for hrl
 
 rew = 0
 r = []
-r1, r2, r3 = [],[],[]
-rho, rho0=[],[]
-for i in range(10): 
+rho=[]
+stuff = []
+for i in range(1): 
 
     # instantiate the envirionment, i.e. collect the initial conditions
     state = env.reset()                       
@@ -74,59 +42,77 @@ for i in range(10):
     # sets time of simulation in real life
     for k in range(15000):                     
         steps=k
-
-        if rH > 1000: #m
-            angle = np.arctan2(state[1], state[0])
-            
+        rho.append([state])
         # gives action with max reward (return of policy)
-        chosen_action = policy(5,10000,state,env)
-
+        chosen_action = policy(5,1000,state,env)
+        stuff.append(chosen_action)
         # plug actions into agent, collect next states        
         state, reward, done, _ = env.step(chosen_action) 
         rew += reward['rew']
         r+= reward['rew'].tolist()
 
-        # if len(reward['r1'])==0: 
-        #     r1+=[0]
-        # else: 
-        #     r1+= reward['r1']
-        # if len(reward['r2'])==0:
-        #     r2+=[0]
-        # else: 
-        #     r2+= reward['r2']
-        # if len(reward['r3'])==0:
-        #     r3+=[0]
-        # else: 
-        #     r3+= reward['r3']
-        # rho += [reward['rho'] - reward['rho0']]
-        if  k % 300 == 0:    # step sizes are small so we are showing every 8th step
-                                        # Can change this number to make things run faster/slower
-                                        # controls size of step in simulation
+        if  k % 10  == 0:   
             env.render(mode='human')
         elif k>=15000 and k % 100 == 0: 
             env.render(mode='human')
 
         if done: 
             print('Done')
-            print(reward)
+            print('reward: ', reward)
+            print('state: ', state)
             break
 
 env.close()
-plt.plot(r, label='total')
-plt.plot(r1, label='dense')
-plt.plot(r2, label='vmin')
-plt.plot(r3, label='vmax')
-plt.plot(rho, label='diff')
-plt.legend()
+
+states = np.array(rho)
+
+x = states[:,:,0]
+y = states[:,:,1]
+psi = states[:, : ,2]
+xvel = states[:,:,3]
+yvel = states[:,:,4]
+psi_dot = states[:,:,5]
+
+plt.figure()
+plt.scatter( range(len(psi)), psi)
+plt.plot([0, len(psi)], [0.25, 0.25], 'r--')
+plt.plot([0, len(psi)], [-0.25, -0.25], 'r--')
+# plt.plot(range(len(psi)), sg(psi.squeeze(), 11, 2 ))
+plt.title('psi')
+
+plt.figure()
+plt.plot(r)
+plt.title('Reward')
+
+plt.figure()
+plt.plot(np.array(stuff)[:, 2])
+plt.plot([0, len(stuff)], [2*math.pi/180, 2*math.pi/180], 'r--')
+plt.plot([0, len(stuff)], [-2*math.pi/180, -2*math.pi/180], 'r--')
+plt.title('Actions')
+
+plt.figure()
+circle1 = plt.Circle((0, 0), 100, edgecolor='g', alpha=0.1)
+plt.gca().add_patch(circle1)    
+plt.plot([0, 100*math.tan(np.pi/6), -100*math.tan(np.pi/6), 0], [0, -100, -100, 0], color='orange', label='Line of Sight')
+plt.plot(y, x)
+plt.xlim([100, -100])
+plt.xlabel('Local Horizontal [m]')
+plt.ylabel('Local Vertical [m]')
+plt.title('Trajectory')
+plt.legend() 
+
+plt.figure()
+plt.plot(xvel)
+plt.title('xvelocity')
+plt.figure()
+plt.plot(yvel)
+plt.title('yvelocity')
+
+plt.figure()
+plt.plot(psi)
+plt.title('psi')
+
+plt.figure()
+plt.plot(psi_dot)
+plt.title('psi_dot')
 plt.show()
-
-executionTime = (time.time() - startTime)
-print('Execution time in seconds: ' + str(executionTime))
-
-print('reward: ' , rew)
-
-
-
-
-
-
