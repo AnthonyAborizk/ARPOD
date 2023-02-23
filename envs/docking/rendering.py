@@ -137,7 +137,7 @@ class DockingRender():
             target_los.set_color(.2, .7, .3)  #sets color of panel
 
             # target DOCKING PORT 
-            target_dock_port = rendering.FilledPolygon([(0,t), (t, -4-t), (-t, -4-t), (0,t)])  
+            target_dock_port = rendering.FilledPolygon([(0,t), (t, -5-t), (-t, -5-t), (0,t)])  
             self.target_dock_port = rendering.Transform()  #allows body to be moved
             target_dock_port.add_attr(self.target_bodytrans)
             target_dock_port.add_attr(self.target_dock_port)

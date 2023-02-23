@@ -44,7 +44,7 @@ for i in range(1):
         steps=k
         rho.append([state])
         # gives action with max reward (return of policy)
-        chosen_action = policy(5,1000,state,env)
+        chosen_action = policy(10,10000,state,env)
         stuff.append(chosen_action)
         # plug actions into agent, collect next states        
         state, reward, done, _ = env.step(chosen_action) 

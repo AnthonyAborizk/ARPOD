@@ -1,9 +1,8 @@
-# ARPOD
-## Anthony Aborizk
+# AstroPigeon
+### Anthony Aborizk
 ### Space Systems Group
 ### Mechanical and Aerospace Engineering Department 
-### Herbert Wertheim College of Engineering
-### University of Florida 
+### University of Florida Herbert Wertheim College of Engineering 
 
 This repository aims to create an OpenAI compatible simulation of an autonomous rendezvous, proximity operations, and docking procedure for spacecraft. The simulation currently follows Clohessy Wiltshire equations in the local vertical local horizontal reference frame. It does not yet account for the attitude of the spacecrafts. 
 
