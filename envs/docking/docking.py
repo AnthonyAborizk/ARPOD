@@ -312,18 +312,18 @@ class SpacecraftDockingContinuous(gym.Env):
             reward[((dones==0) & (rH <= 100) & (val < math.cos(self.theta_los)) & (abs(xpos) > self.pos_threshold) & (abs(ypos) > self.pos_threshold))] += -10
             # reward[((dones==0) & (psi >= self.psi_threshold))] += -.0001
 
-        if all(dones) != False: 
-            reward[( (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
-            reward[( (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
-            reward[( ((self.steps+hstep) * self.TAU > self.max_time))] += -1
-            reward[( (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] += -1 
-            # reward[((dones==1)  & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] = 1
-            
-            success[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] = 1
-            crash[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] = 1
-            failure[((dones==1) & (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] = 1
-            overtime[((dones==1) & ((self.steps+hstep) * self.TAU >= self.max_time-1))] = 1
-            # nofuel[((dones==1)  & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] = 1
+        # if all(dones) != False: 
+        reward[( (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] += -0.001
+        reward[( (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] += 1
+        reward[( ((self.steps+hstep) * self.TAU > self.max_time))] += -1
+        reward[( (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] += -1 
+        # reward[((dones==1)  & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] = 1
+        
+        success[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH <= self.VEL_THRESH))] = 1
+        crash[((dones==1) & (abs(xpos) <= self.pos_threshold) & (abs(ypos) <= self.pos_threshold) & (vH > self.VEL_THRESH))] = 1
+        failure[((dones==1) & (abs(xpos) > self.x_threshold) | (abs(ypos) > self.y_threshold))] = 1
+        overtime[((dones==1) & ((self.steps+hstep) * self.TAU >= self.max_time-1))] = 1
+        # nofuel[((dones==1)  & (self.hcinput > np.ones((obs.shape[0],))*self.max_control))] = 1
 
         info = {}
         info['success'] = sum(success)
@@ -352,8 +352,8 @@ class SpacecraftDockingContinuous(gym.Env):
         # Define acceleration functions
 
         x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
-            (self.x_force / self.MASS_DEPUTY)
-        y_acc = (-2 * self.N * x_dot) + (self.y_force / self.MASS_DEPUTY)
+            (self.x_force * np.cos(psi) + self.y_force*np.sin(psi))/ self.MASS_DEPUTY
+        y_acc = (-2 * self.N * x_dot) + (-self.x_force*np.sin(psi) + self.y_force * np.cos(psi)) / self.MASS_DEPUTY
         psi_acc = self.torque/self.inertia_zz 
         #* z_acc = -self.N**2*z + self.z_force/self.MASS_chaser
 
@@ -410,8 +410,8 @@ class SpacecraftDockingContinuous(gym.Env):
 
         # Define acceleration functions
         x_acc = (3 * self.N ** 2 * x) + (2 * self.N * y_dot) + \
-            (x_force / self.MASS_DEPUTY)
-        y_acc = (-2 * self.N * x_dot) + (y_force / self.MASS_DEPUTY)
+            (x_force * np.cos(psi) + y_force*np.sin(psi)) / self.MASS_DEPUTY
+        y_acc = (-2 * self.N * x_dot) + (-x_force*np.sin(psi) + y_force * np.cos(psi))/ self.MASS_DEPUTY
         psi_acc = torque/self.inertia_zz 
 
         # Integrate acceleration to calculate velocity
