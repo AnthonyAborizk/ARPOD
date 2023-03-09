@@ -16,7 +16,7 @@ def policy(Horizon, num_seq, observation, env):
 
     for j in range(1, Horizon):
         rew, _, _=env.get_reward(new_state,act, obs_old, j ) #collect returns from 
-        act=action_mat[:,j,:].reshape(num_seq, 3 )            #Horizon x 2
+        act=action_mat[:,j,:].reshape(num_seq, 3 )           #Horizon x 2
         obs_old = new_state
         new_state = env.predict(obs_old, act)
         reward+=np.array(rew)               # sum reward for each different path
