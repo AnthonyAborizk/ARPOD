@@ -59,17 +59,19 @@ Addition of DOF
 '''
 
 import os
-import gym
+import gymnasium as gym
 import math
 import time
 import pickle
 import random
 import numpy as np
-from gym import spaces
-from gym.utils import seeding
+from gymnasium.spaces import Box
+from gymnasium.utils import seeding
 from pyparsing import java_style_comment
 from envs.docking.rendering import DockingRender as render
+from gymnasium.wrappers import EnvCompatibility
 
+## @EnvCompatibility
 class SpacecraftDockingContinuous(gym.Env):
 
     def __init__(self, logdir=None):
@@ -190,12 +192,12 @@ class SpacecraftDockingContinuous(gym.Env):
         low = -high
         low[2] = 0
 
-        self.action_space = spaces.Box(np.array([-self.force_magnitude, -self.force_magnitude, \
+        self.action_space = Box(np.array([-self.force_magnitude, -self.force_magnitude, \
                                                  -self.torque_mag]), np.array([self.force_magnitude,\
                                                   self.force_magnitude, self.torque_mag]), dtype=np.float32)
 
         # Continuous observation space
-        self.observation_space = spaces.Box(low, high, dtype=np.float32)
+        self.observation_space = Box(low, high, dtype=np.float32)
 
         self.seed()  # Generate random seed
 
@@ -203,7 +205,7 @@ class SpacecraftDockingContinuous(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def reset(self):  # called before each episode
+    def reset(self, *, seed=None, options=None):  # called before each episode
         self.steps = -1         # Step counter
         self.control_input = 0  # Used to sum total control input for an episode
 
@@ -228,7 +230,10 @@ class SpacecraftDockingContinuous(gym.Env):
         # orientation of chaser
         self.state = np.array([self.x_deputy, self.y_deputy,self.psi, x_dot, y_dot, psi_dot])
 
-        return self.state
+        empty_dict = dict()  # Added for gymnasium compatibility 
+        return self.state, empty_dict
+    
+       
 
     def get_reward(self, obs, actions, obs_old, hstep):
         '''calculates reward 
@@ -379,17 +384,25 @@ class SpacecraftDockingContinuous(gym.Env):
         self.vH = np.sqrt(x_dot**2 + y_dot**2)  # Velocity Magnitude
         self.vH_max = 2 * self.N * self.rH + self.VEL_THRESH  # Max Velocity
         self.vH_min = 1/2 * self.N * self.rH - self.VEL_THRESH  # Min Velocity
-        rew, done, reward = self.get_reward(observation, action, self.state, 0)
+        rew, done, reward= self.get_reward(observation, action, self.state, 0)  # What's up with rew and reward??
         self.state = observation
         reward['rew'] = rew
-
+        # reward['rew'] = rew
         if self._logdir:
             self.log(action)
 
         if done and self._logdir: 
             self.log(action, done=done)
 
-        return self.state, reward, done, {}
+        info = done
+        if all(done):
+            done = True
+            truncated = True
+        else:
+            done = False
+            truncated = False
+
+        return self.state, rew.item(), done, truncated, {} # Keep {} -- empty dict
 
      # Rendering Functions
     def render(self, mode):

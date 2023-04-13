@@ -29,7 +29,7 @@ close:
 #   added orientation of chaser spacecraft
 #   Anthony Aborizk
 
-import gym
+import gymnasium as gym
 import math
 import random
 import numpy as np
