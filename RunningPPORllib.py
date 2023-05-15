@@ -40,8 +40,8 @@ config = PPOConfig().training(gamma = 0.9, lr=0.01)\
 
 pretty_print(config.to_dict())
 
-# ray.rllib.utils.check_env([env])
+# ray.rllib.utils.check_env(env)
 
-algo = config.build()
+algo = config.build(SpacecraftDockingContinuous)
 
 algo.train()

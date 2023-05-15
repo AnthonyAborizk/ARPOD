@@ -371,8 +371,8 @@ class SpacecraftDockingContinuous(gym.Env):
         # Integrate velocity to calculate position
         x = x + x_dot * self.TAU
         y = y + y_dot * self.TAU
-        psi = psi + psi_dot * self.TAU
-        # psi = (psi_unwrapped + np.pi) % (2 * np.pi) - np.pi
+        psi_unwrapped = psi + psi_dot * self.TAU
+        psi = (psi_unwrapped + np.pi) % (2 * np.pi) # - np.pi
         #* z = z + z_dot * self.TAU
 
         # Define new observation state
@@ -405,8 +405,8 @@ class SpacecraftDockingContinuous(gym.Env):
         return self.state, rew.item(), done, truncated, {} # Keep {} -- empty dict
 
      # Rendering Functions
-    def render(self, mode):
-        render.renderSim(self, mode='human')
+    def render(self, mode='human'):
+        render.renderSim(self, mode)
 
     def close(self):
         render.close(self)
