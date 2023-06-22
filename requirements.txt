@@ -1,0 +1,11 @@
+gymnasium 
+ray 
+gym 
+dm_tree
+pandas
+opencv-python
+scikit-image
+pyparsing
+torch 
+torchvision 
+torchaudio

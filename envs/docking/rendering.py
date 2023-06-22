@@ -34,7 +34,7 @@ import math
 import random
 import numpy as np
 # import matplotlib.pyplot as plt 
-from gym.envs.classic_control import rendering
+# from gym.envs.classic_control import rendering #! if issues arise here, uncomment this!
 
 class DockingRender():
 
@@ -109,6 +109,7 @@ class DockingRender():
             self.showRes = False
 
         if self.viewer is None or again == 1:
+            from gym.envs.classic_control import rendering #! if issues arise here comment this out!
             if again==0: 
                 self.viewer = rendering.Viewer(screen_width, screen_height) #create render viewer object
 
