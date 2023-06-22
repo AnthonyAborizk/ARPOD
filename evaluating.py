@@ -16,7 +16,7 @@ algo = (
 
 
 # agent = ppo.PPOTrainer(algo, env= 'spacecraft-docking-continuous-v0')
-algo.restore('C:/Users/antho/ray_results/PPO_spacecraft-docking-continuous-v0_2023-05-09_13-39-15_mtxp_44/checkpoint_000071')
+algo.restore('c:/Users/antho/ray_results/PPO_spacecraft-docking-continuous-v0_2023-06-08_01-52-06sr91n78x/checkpoint_001100')
 
 episode_reward = 0
 done = False

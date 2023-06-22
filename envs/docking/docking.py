@@ -303,8 +303,10 @@ class SpacecraftDockingContinuous(gym.Env):
         overtime = np.zeros((obs.shape[0],))    
         nofuel   = np.zeros((obs.shape[0],))
 
+        # TODO: 3) reward = -np.sqrt((-1- rH + rH_old)**2 + 0.1*(-1-abs(psi) + abs(obs_old[:,2]))**2) / 2000*self.TAU
         reward = (-1 - rH + rH_old)/2000 * self.TAU # reward for getting closer to target
-        reward +=-(psi-0)**2/3000 * self.TAU 
+        # TODO: 2) if still not working, negate 306
+        reward +=-(psi-0)**2/3000 * self.TAU # TODO: 1a) If still spinning, comment out
 
         if ~all(dones):    
             # stay within vel const
@@ -313,7 +315,7 @@ class SpacecraftDockingContinuous(gym.Env):
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH < vH_min))] += -0.0075/2 * self.TAU
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH > vH_max))] += -0.0075/2 * self.TAU
 
-            reward[((dones==0) & (abs(psi_dot_obs) > 1))] += -0.0075/2 * self.TAU   #changed magnitude
+            reward[((dones==0) & (abs(psi_dot_obs) > 1))] += -0.0075/2 * self.TAU   #TODO: 1b) changed magnitude; take out if spinning like top
             #? if not done, within 100 m, not inside LoS and not within docking region
             reward[((dones==0) & (rH <= 100) & (val < math.cos(self.theta_los)) & (abs(xpos) > self.pos_threshold) & (abs(ypos) > self.pos_threshold))] += -10
             # reward[((dones==0) & (psi >= self.psi_threshold))] += -.0001
@@ -372,8 +374,8 @@ class SpacecraftDockingContinuous(gym.Env):
         # Integrate velocity to calculate position
         x = x + x_dot * self.TAU
         y = y + y_dot * self.TAU
-        psi_unwrapped = psi + psi_dot * self.TAU
-        psi = (psi_unwrapped + np.pi) % (2 * np.pi) # - np.pi
+        psi = psi + psi_dot * self.TAU # Used to be psi_unwrapped
+        # psi = (psi_unwrapped + np.pi) % (2 * np.pi) # - np.pi
         #* z = z + z_dot * self.TAU
 
         # Define new observation state

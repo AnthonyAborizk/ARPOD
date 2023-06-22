@@ -36,6 +36,6 @@ for i in range(1000000):  # 1 million itertions -- leave overnight
     result = algo.train()
     print(pretty_print(result))
 
-    if i % 5 == 0:
+    if (i+1) % 2 == 0:
         checkpoint_dir = algo.save()
         print(f"Checkpoint saved in directory {checkpoint_dir}")
