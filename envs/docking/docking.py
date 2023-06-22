@@ -85,13 +85,14 @@ class SpacecraftDockingContinuous(gym.Env):
         self.position_deputy = 100   # m (Relative distance from chief)
         self.MASS_DEPUTY = 12        # kg 
         self.MASS_TARGET = 200      # kg
-        a = 42164000.                # semi-major axis of GEO in m
-        mu = 3.986e14                # Earth's gravitaitonal constant m^3/s^2
-        self.N = math.sqrt(mu/a**3)  # rad/sec (mean motion) (circular orbit)
+        #a = 42164000.                # semi-major axis of GEO in m
+        #mu = 3.986e14                # Earth's gravitaitonal constant m^3/s^2
+        self.N = 0.001027           #mean motion of the ISS
+        #math.sqrt(mu/a**3)  # rad/sec (mean motion) (circular orbit)
         self.TAU = 1                 # sec (time step)
         self.integrator = 'Euler'    # Either 'Quad', 'RK45', or 'Euler' (default)
         self.force_magnitude = 1     # Newtons
-        self.torque_mag = 2*math.pi/180# rad
+        self.torque_mag = math.pi/180# rad
         self.inertia_zz = 0.056      # kg-m**2 (1/2 M*R**2)
 
         if self.position_deputy > 100: 
@@ -312,7 +313,7 @@ class SpacecraftDockingContinuous(gym.Env):
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH < vH_min))] += -0.0075/2 * self.TAU
             reward[((dones==0) & (vH < 2*self.VEL_THRESH) & (vH > vH_max))] += -0.0075/2 * self.TAU
 
-            reward[((dones==0) & (abs(psi_dot_obs) > 1))] += -0.00075/2 * self.TAU
+            reward[((dones==0) & (abs(psi_dot_obs) > 1))] += -0.0075/2 * self.TAU   #changed magnitude
             #? if not done, within 100 m, not inside LoS and not within docking region
             reward[((dones==0) & (rH <= 100) & (val < math.cos(self.theta_los)) & (abs(xpos) > self.pos_threshold) & (abs(ypos) > self.pos_threshold))] += -10
             # reward[((dones==0) & (psi >= self.psi_threshold))] += -.0001
