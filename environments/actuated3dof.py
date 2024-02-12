@@ -247,6 +247,16 @@ class ActuatedDocking3DOF(gym.Env):
                 vy    = -2nvx + fx/M*W2
                 vz    = -fx/M*W3
 
+  		*insert quaternion equations* 
+    		q1 
+      		q2
+		q3
+  		q4
+      		dq1 
+      		dq2
+		dq3
+		dq4 
+  
                 Args:
                     t (float): time
                     x (nparray): array of states
