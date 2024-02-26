@@ -350,6 +350,15 @@ class ActuatedDocking6DOF(gym.Env):
         self.omegaH  = np.sqrt(out[10]**2 + out[11]**2 + out[12]**2) # Angular Velocity Magnitude
         self.nuH = np.sqrt(out[13]**2 + out[14]**2 + out[15]**2) # Control input magnitude
         reward, done = self.get_reward(out, action, self.state, 0)
+        
+        # Normalize the quaternion (must be a unit magnitude before feeding on to next step)
+        # Magnitude of q_original + q_dot which is >1
+        self.q_mag = np.linalg.norm(out[6:10]) 
+    
+        # Elementwise normalization
+        out[6:10] /= self.q_mag 
+        
+        # Setting the state to the step output
         self.state  = out
 
         truncated = False
