@@ -191,21 +191,21 @@ class ActuatedDocking6DOF(gym.Env):
 
         # randomly generate Euler angles
         ## initial Euler angles (rad)
-        Gamma = np.zeros([3,]) #2*pi*self.np_random.uniform(low=0, high=1, size=[3])
+        Gamma = 2*pi*self.np_random.uniform(low=0, high=1, size=[3])
         
         # Convert to Quaternions - Scalar part = q[0]
-        self.q = EulerToQuaternion(Gamma) # rad
-        
+        q = np.zeros([4,]) # EulerToQuaternion(Gamma) # rad
+        q[0] = 1
         # Could add some singularity checking here?
         
         # Not really needed, but done to maintain variable convention
-        q = self.q[0:4]
+        # q = self.q[0:4]
 
         # randomly generate angular velocity values
-        omega = (-np.ones([3,]) + 2*self.np_random.uniform(low=0, high=1, size=(3,)))
+        omega = np.zeros([3,]) # (-np.ones([3,]) + 2*self.np_random.uniform(low=0, high=1, size=(3,)))
 
         # randomly generate wheel angular velocity values
-        nu = self.np_random.uniform(low=-1, high=1, size=[3])  # rad/s
+        nu = np.zeros([3,]) # self.np_random.uniform(low=-1, high=1, size=[3])  # rad/s
         
         trans_states = np.array([x, y, z, vx, vy, vz]) # translation states
         self.state = np.hstack([trans_states, q, omega, nu]) # 16 state variables total
@@ -270,11 +270,10 @@ class ActuatedDocking6DOF(gym.Env):
                                  [self.u_mag, self.u_mag, self.u_mag, self.force_mag, self.force_mag, self.force_mag])
 
         # Extract current state and action data
-        x, y, z, vx, vy, vz, q0, q1, q2, q3, w1, w2, w3, nu1, nu2, nu3 = self.state
+        # x, y, z, vx, vy, vz, q0, q1, q2, q3, w1, w2, w3, nu1, nu2, nu3 = self.state
         self.u1, self.u2, self.u3, self.fx, self.fy, self.fz = action
-        self.u = np.array([[self.u1],
-                           [self.u2],
-                           [self.u3]])
+        self.u = np.array([self.u1, self.u2, self.u3])
+
         # Integrate Acceleration and Velocity
         if self.integrator == 'RK45':  # Runge-Kutta Integrator
             # Define acceleration functions
@@ -302,15 +301,8 @@ class ActuatedDocking6DOF(gym.Env):
                 ################################################################################
                 '''
                 # Extract current state data
-                x     = state[0]
-                y     = state[1] 
-                z     = state[2]
-                vx    = state[3]
-                vy    = state[4]
-                vz    = state[5] 
-                q     = state[6:10].reshape(4,1) 
-                omega = state[10:13].reshape(3,1)
-                nu    = state[13:16] # not used
+                x, y, z, vx, vy, vz, q0, q1, q2, q3, _, _, _, _, _, _ = state
+                omega = state[10:13].reshape(3,)
 
                 # calculate acceleration - see eq 7.37 Curtis 
                 x_acl = (3 * self.n ** 2 * x) + (2 * self.n * vy) + (self.fx/ self.Md)
@@ -327,7 +319,7 @@ class ActuatedDocking6DOF(gym.Env):
                 q_dot = 0.5 * np.dot(Omega,omega).squeeze()
 
                 # calculate change in angular velocity - See eq 13b in Oestreich
-                omega_dot = np.dot(self.J_inv, (self.u - np.cross(omega[:,0], np.dot(self.J, omega)[:,0]).reshape(-1,1))).squeeze()
+                omega_dot = np.dot(self.J_inv, (self.u - np.cross(omega, np.dot(self.J, omega))))
 
                 # calculate change in wheel angular velocity - not finished
                 nu_dot = np.array([self.u1, self.u2, self.u3])
@@ -335,12 +327,8 @@ class ActuatedDocking6DOF(gym.Env):
                 return np.hstack([trans_states, q_dot, omega_dot, nu_dot])
 
             # Integrate to calculate the next state
-            trans_states = np.array([x, y, z, vx, vy, vz])
-            q            = np.array([q0, q1, q2, q3])
-            omega        = np.array([w1, w2, w3])
-            nu           = np.array([nu1, nu2, nu3])
-            inits        = np.hstack([trans_states, q, omega, nu])
-            out          = integrate.solve_ivp(p_dot, (0, self.TAU), inits).y[:, -1] 
+
+            out = integrate.solve_ivp(p_dot, (0, self.TAU), self.state,rtol=1e-2, atol=1e-2).y[:, -1] 
             
         # Relative distance between deputy and chief (assume chief is always at origin)
         self.rH     = np.sqrt(out[0]**2 + out[1]**2 + out[2]**2)
@@ -353,10 +341,10 @@ class ActuatedDocking6DOF(gym.Env):
         
         # Normalize the quaternion (must be a unit magnitude before feeding on to next step)
         # Magnitude of q_original + q_dot which is >1
-        self.q_mag = np.linalg.norm(out[6:10]) 
+        q_mag = np.linalg.norm(out[6:10]) 
     
         # Elementwise normalization
-        out[6:10] /= self.q_mag 
+        out[6:10] /= q_mag 
         
         # Setting the state to the step output
         self.state  = out

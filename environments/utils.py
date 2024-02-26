@@ -174,21 +174,23 @@ def QuaternionToEuler(q):
         # Roll (x-axis rotation)
         roll = np.arctan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
         # Pitch (y-axis rotation)
-        pitch = np.arctan2(2 * (w * y + z * x), 1 - 2 * (y**2 + x**2))
+        pitch = np.arctan2(1 + 2 * (w * y + z * x), 1 - 2 * (w*y + x*z))
         # Yaw (z-axis rotation)
         yaw = np.arctan2(2 * (w * z + x * y), 1 - 2 * (z**2 + y**2))
     else:
         roll = np.arctan2(2 * (q[:, 0] * q[:, 1] + q[:, 2] * q[:, 3]),
                           1 - 2 * (q[:, 1]**2 + q[:, 2]**2))
-        pitch = np.arctan2(2 * (q[:, 0] * q[:, 2] + q[:, 3] * q[:, 1]),
-                           1 - 2 * (q[:, 2]**2 + q[:, 1]**2))
+        
+        pitch = np.arctan2(1 + 2 * (q[:, 0] * q[:, 2] + q[:, 3] * q[:, 1]),
+                           1 - 2 * (q[:, 2]*q[:,0] + q[:, 1]*q[:,3]))
+        
         yaw = np.arctan2(2 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]),
                          1 - 2 * (q[:, 3]**2 + q[:, 2]**2))
 
     # Convert radians to degrees
-    roll = np.degrees(roll)
-    pitch = np.degrees(pitch)
-    yaw = np.degrees(yaw)
+    # roll  = np.degrees(roll)
+    # pitch = np.degrees(pitch)
+    # yaw   = np.degrees(yaw)
     
     return np.column_stack((yaw, pitch, roll))
 
@@ -198,7 +200,7 @@ def plots(states, actions, env_name):
     '''
     x  = states[:,:,0].squeeze()
     y  = states[:,:,1].squeeze()
-    time = np.linspace(0, len(x)/2, len(x))
+    time = np.linspace(0, len(x), len(x))
     
     if env_name == 'ActuatedDocking':
         theta = states[:, : ,2].squeeze()
@@ -350,35 +352,42 @@ def plots(states, actions, env_name):
         phi   = Euler[:,2]
 
         #************* POSITION *******************
-        plt.figure()
-        plt.plot(time, x, label='x')
-        plt.plot(time, y, label='y')
-        plt.plot(time, z, label='z')
-        rho = np.linalg.norm([x,y, z], axis=0)
-        plt.plot(time, rho, label='r_mag')
-        plt.ylabel('Position [m]')
-        plt.xlabel('Times [s]')
-        plt.legend()
+        # plt.figure()
+        # plt.plot(time, x, label='x')
+        # plt.plot(time, y, label='y')
+        # plt.plot(time, z, label='z')
+        # rho = np.linalg.norm([x,y, z], axis=0)
+        # plt.plot(time, rho, label='r_mag')
+        # plt.ylabel('Position [m]')
+        # plt.xlabel('Times [s]')
+        # plt.legend()
 
         #************* VELOCITY *******************
-        plt.figure()
-        plt.plot(time, vx, label='xvelocity')
-        plt.plot(time, vy, label='yvelocity')
-        plt.plot(time, vz, label='zvelocity')
-        vH = np.linalg.norm([vx, vy, vz], axis=0)    # Velocity Magnitude
-        plt.plot(time, vH, label='vel_mag')
-        plt.xlabel('Time [s]')
-        plt.ylabel('Velocity [m/s]')
-        plt.legend()
+        # plt.figure()
+        # plt.plot(time, vx, label='xvelocity')
+        # plt.plot(time, vy, label='yvelocity')
+        # plt.plot(time, vz, label='zvelocity')
+        # vH = np.linalg.norm([vx, vy, vz], axis=0)    # Velocity Magnitude
+        # plt.plot(time, vH, label='vel_mag')
+        # plt.xlabel('Time [s]')
+        # plt.ylabel('Velocity [m/s]')
+        # plt.legend()
         
         #************* ANGLE *******************
         plt.figure()
         plt.plot(time, psi, label='psi')
         plt.plot(time, theta, label='theta')
-        plt.plot(time, phi, label='phi')
+        plt.plot(time, phi,'y', label='phi')
         plt.xlabel('Time [s]')
         plt.ylabel('Angle [deg]')
         plt.legend() 
+
+        plt.figure()
+        plt.plot(time, q[:, 0],label='0')
+        plt.plot(time, q[:, 1], label = '1')
+        plt.plot(time, q[:, 2], label = '2')
+        plt.plot(time, q[:, 3], label = '3')
+        plt.legend()
 
         #************* ANGULAR VELOCITY *******************
         plt.figure()
@@ -419,25 +428,25 @@ def plots(states, actions, env_name):
         plt.legend()
 
         #************* TRAJECTORY *******************
-        p, q = np.mgrid[0:2*np.pi:20j, 0:np.pi:10j]
-        r = np.cos(p)*np.sin(q) * 100
-        s = np.sin(p)*np.sin(q) * 100
-        t = np.cos(q) * 100
+        # p, q = np.mgrid[0:2*np.pi:20j, 0:np.pi:10j]
+        # r = np.cos(p)*np.sin(q) * 100
+        # s = np.sin(p)*np.sin(q) * 100
+        # t = np.cos(q) * 100
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')  # Project into 3 dims
-        ax.plot_wireframe(r, s, t, color='k', alpha=0.15)
-        scat_plot=ax.scatter(y, x, z, s=1, label='trajectory')
-        ax.scatter(y[-1], x[-1], z[-1], s=20, label= 'end')
-        ax.scatter(y[0], x[0], z[0], s=20, label='start')
-        ax.invert_xaxis()
-        ax.set_xlabel('y')
-        ax.set_ylabel('x')
-        ax.set_zlabel('z')
-        ax.set_aspect('equal')
-        ax.grid(False)
-        plt.title('Trajectory')
-        plt.legend()
+        # fig = plt.figure()
+        # ax = fig.add_subplot(111, projection='3d')  # Project into 3 dims
+        # ax.plot_wireframe(r, s, t, color='k', alpha=0.15)
+        # scat_plot=ax.scatter(y, x, z, s=1, label='trajectory')
+        # ax.scatter(y[-1], x[-1], z[-1], s=20, label= 'end')
+        # ax.scatter(y[0], x[0], z[0], s=20, label='start')
+        # ax.invert_xaxis()
+        # ax.set_xlabel('y')
+        # ax.set_ylabel('x')
+        # ax.set_zlabel('z')
+        # ax.set_aspect('equal')
+        # ax.grid(False)
+        # plt.title('Trajectory')
+        # plt.legend()
 
     elif env_name == 'UnderactuatedDocking':
 

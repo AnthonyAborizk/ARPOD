@@ -70,6 +70,7 @@ while not done:
 
     # plug actions into agent, collect next states        
     state, reward, done, _, info = env.step(control_input) 
+
 print('Done')
 print(env.steps)
 print('state: ', state)
