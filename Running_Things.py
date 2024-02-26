@@ -42,7 +42,7 @@ from environments.underactuated6dof import UnderactuatedDocking6DOF
 # - 'ActuatedDocking6DOF' for a fully-actuated 6-DOF model
 # - 'UnderactuatedDocking6DOF' for an under-actuated 6-DOF model
 
-env_name = 'ActuatedDocking3DOF'
+env_name = 'ActuatedDocking6DOF'
 
 
 if env_name == 'ActuatedDocking3DOF':
